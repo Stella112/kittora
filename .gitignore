@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+packages/contracts/out/
+packages/contracts/cache/
+packages/contracts/broadcast/*/31337/
+*.db
+.DS_Store

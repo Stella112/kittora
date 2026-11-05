@@ -1,0 +1,19 @@
+{
+  "name": "@kittora/spike",
+  "private": true,
+  "type": "module",
+  "description": "THROWAWAY Phase 0 spike. Never reused in production.",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5175",
+    "verify": "node server/verify.mjs"
+  },
+  "dependencies": {
+    "@nimiq/core": "^2.23.0",
+    "@nimiq/mini-app-sdk": "0.2.5",
+    "viem": "^2.57.16"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.3.6"
+  }
+}

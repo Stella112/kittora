@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kittora Spike</title>
+  <style>
+    body { font: 15px/1.4 system-ui, sans-serif; margin: 0; padding: 12px; background: #fff8f0; color: #222; }
+    h1 { font-size: 18px; } h2 { font-size: 16px; margin: 0 0 6px; }
+    section { background: #fff; border-radius: 12px; padding: 12px; margin-bottom: 12px; box-shadow: 0 1px 3px #0002; }
+    button { min-height: 44px; padding: 0 14px; margin: 4px 4px 4px 0; border-radius: 10px; border: 0; background: #e8772e; color: #fff; font-weight: 600; }
+    input { min-height: 40px; width: 100%; box-sizing: border-box; margin: 4px 0; padding: 0 8px; border: 1px solid #ccc; border-radius: 8px; }
+    pre { white-space: pre-wrap; word-break: break-all; background: #f4f4f4; padding: 8px; border-radius: 8px; font-size: 12px; max-height: 260px; overflow: auto; }
+    .badge { background: #c00; color: #fff; padding: 2px 8px; border-radius: 6px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Kittora Phase 0 Spike <span class="badge">THROWAWAY</span></h1>
+  <section><h2>Env</h2><pre id="env">loading…</pre></section>
+  <section><h2>S1 Sign-in</h2><button id="s1">Run S1</button><pre id="o1"></pre></section>
+  <section><h2>S2 Staking (testnet)</h2>
+    <input id="validator" placeholder="Validator address NQ.." />
+    <input id="nim" placeholder="Amount NIM" value="1" />
+    <button data-s2="new">New staker</button><button data-s2="add">Add stake</button>
+    <button data-s2="retire">Retire</button><button data-s2="remove">Remove</button>
+    <pre id="o2"></pre></section>
+  <section><h2>S3 Memo stamp</h2>
+    <input id="stampTo" placeholder="Recipient NQ.. (blank = own address)" />
+    <button id="s3">Send 0.01 NIM with memo</button><pre id="o3"></pre></section>
+  <section><h2>S4 EVM typed data</h2><button id="s4">Run S4</button><pre id="o4"></pre></section>
+  <section><h2>S5 Gasless USDT (Polygon mainnet, real USDT)</h2>
+    <input id="usdt" value="1" placeholder="USDT amount" />
+    <button id="s5state">State</button><button id="s5approve">1. Sign approve</button>
+    <button id="s5deposit">2. Sign deposit</button><button id="s5withdraw">3. Sign withdraw</button>
+    <pre id="o5"></pre></section>
+  <section><h2>S7 Account / HTLC</h2><button id="s7">Inspect accounts</button><pre id="o7"></pre></section>
+  <script type="module" src="/main.ts"></script>
+</body>
+</html>

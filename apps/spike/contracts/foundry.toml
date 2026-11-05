@@ -1,0 +1,14 @@
+# THROWAWAY spike contracts. Never reused in production.
+[profile.default]
+src = "src"
+test = "test"
+out = "out"
+cache_path = "cache"
+libs = ["../../../packages/contracts/lib"]
+solc_version = "0.8.28"
+evm_version = "cancun"
+optimizer = true
+remappings = [
+  "@openzeppelin/contracts/=../../../packages/contracts/lib/openzeppelin-contracts/contracts/",
+  "forge-std/=../../../packages/contracts/lib/forge-std/src/",
+]
