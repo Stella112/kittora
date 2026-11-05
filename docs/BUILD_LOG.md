@@ -21,3 +21,19 @@
 ## Test matrix
 | Date | Device | OS | Nimiq Pay | SDK | Check | Result |
 |---|---|---|---|---|---|---|
+
+## Nov 6 2026: Phase 1 contracts (Gate 1 evidence)
+**Built:** `SigAuth` (EIP-712 + nonces + deadline), `PocketVault` (Flex/Target/SafeLock/Bond pockets on Aave V3, Autosave mandates, NIM bonds, pilot caps), `GroupKitty` (VSLA: shares, social fund, guarantor loans, defaults, grants, Share-Out with roll-over), `script/Deploy.s.sol`, `setup-libs.sh`.
+
+**Evidence**
+- `forge test`: 47 tests green on a Polygon mainnet fork @ 96,810,000: PocketVault 25, GroupKitty 21, S6 spike 1, plus 2 invariant suites.
+- Invariants: GroupKitty 256 runs × 500 calls (mock token, labelled TEST MOCK): balance ≥ cash + social, shares add up, a default never hurts non-guarantors, Share-Out pays exactly the balance. PocketVault (fork) 16 × 20: Σ pocket assets ≤ total assets.
+- Coverage (`forge coverage --ir-minimum`): GroupKitty **99.7% lines**, PocketVault **98.8% lines**, SigAuth 100%.
+- Slither 0.11.6 run; findings triaged in RISKS.md, with one fix (Aave withdraw return checked).
+- Deploy script simulated on a fork (no broadcast).
+
+**Not done / open**
+- Polygonscan verification will happen at the real deploy (needs `POLYGONSCAN_API_KEY` and Maris's approval).
+- `NoLiquidity` on loans is unreachable by construction (RISKS.md), so that branch is uncovered.
+
+**Next:** Phase 2 (relayer, scheduler, watcher, attester).

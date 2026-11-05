@@ -26,14 +26,14 @@ contract AaveForkTest is Test {
     IERC20 constant AUSDT = IERC20(AaveV3PolygonAssets.USDT0_A_TOKEN);
 
     function setUp() public {
-        vm.createSelectFork(vm.envOr("POLYGON_RPC_URL", string("https://polygon-bor-rpc.publicnode.com")));
+        vm.createSelectFork(vm.envOr("POLYGON_RPC_URL", string("https://polygon.drpc.org")), 96_810_000);
     }
 
     function test_supplyAccruesAndWithdraws() public {
         AaveUser u = new AaveUser();
         deal(address(USDT), address(u), 10e6);
         u.supply(10e6);
-        assertApproxEqAbs(AUSDT.balanceOf(address(u)), 10e6, 1);
+        assertApproxEqAbs(AUSDT.balanceOf(address(u)), 10e6, 2); // Aave ray rounding
 
         vm.warp(block.timestamp + 30 days);
         uint256 grown = AUSDT.balanceOf(address(u));
