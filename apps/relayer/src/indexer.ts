@@ -1,7 +1,7 @@
 // Read-side cache (display only; balances are always read live from the contracts).
 // Incrementally scans PocketOpened / MemberJoined / BondLocked / MandateCreated logs from DEPLOY_BLOCK in chunks
 // small enough for free RPC plans, and answers "which pockets / groups / bonds / mandates does this address have".
-import type { Abi, Address, PublicClient } from 'viem'
+import { parseEventLogs, type Abi, type Address, type PublicClient } from 'viem'
 import { PocketVaultAbi, GroupKittyAbi } from '@kittora/core'
 
 const CHUNK = 9_000n
@@ -41,10 +41,13 @@ export class Indexer {
     while (this.scanned < head) {
       const fromBlock = this.scanned + 1n
       const toBlock = fromBlock + CHUNK - 1n > head ? head : fromBlock + CHUNK - 1n
-      const [vaultLogs, groupLogs] = await Promise.all([
-        this.pub.getContractEvents({ address: this.vault, abi: PocketVaultAbi as Abi, fromBlock, toBlock }),
-        this.pub.getContractEvents({ address: this.group, abi: GroupKittyAbi as Abi, eventName: 'MemberJoined', fromBlock, toBlock }),
+      // Plain address filters (no topic lists): free RPC plans reject OR-topic filters; we decode locally instead.
+      const [rawVault, rawGroup] = await Promise.all([
+        this.pub.getLogs({ address: this.vault, fromBlock, toBlock }),
+        this.pub.getLogs({ address: this.group, fromBlock, toBlock }),
       ])
+      const vaultLogs = parseEventLogs({ abi: PocketVaultAbi as Abi, logs: rawVault })
+      const groupLogs = parseEventLogs({ abi: GroupKittyAbi as Abi, logs: rawGroup, eventName: 'MemberJoined' })
       for (const l of vaultLogs as any[]) {
         if (l.eventName === 'PocketOpened') this.add(this.pockets, l.args.owner, l.args.pocketId)
         if (l.eventName === 'BondLocked') this.add(this.bonds, l.args.owner, l.args.bondId)
