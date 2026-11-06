@@ -8,4 +8,4 @@ packages/contracts/cache/
 packages/contracts/broadcast/*/31337/
 *.db
 .DS_Store
-packages/contracts/broadcast/**/dry-run/
+packages/contracts/broadcast/
