@@ -53,3 +53,6 @@ Loans count at par (principal) until repaid or written off; unpaid interest is n
 - **Direct calls:** every signed function also accepts a direct call from the signer with an empty signature (nonce and deadline still apply), which is useful for wallets that hold POL.
 - **Autosave into a group:** `amountPerRun` must equal `shares × sharePrice + social fund due this meeting`, otherwise the run reverts.
 - **RPC for fork tests:** `https://polygon.drpc.org` (archive state), pinned block 96,810,000.
+
+## Nov 6 2026: NIM SafeLock validator (Maris)
+**Garuda Pool**, `NQ15 HNAH YRVH DFVM YHAG BSXG 0QHK KA0Q XDR7`. Chosen from the validators API (`validators-api-mainnet.nuxt.dev/api/v1/validators`) ranked by score: the top entry (Nimiq Surf) was skipped because its payout type is `none` (stakers receive no rewards) and its data was stale. Garuda: score 1.000, 5% fee, restake payouts, 255 stakers, 2.8% of stake.
