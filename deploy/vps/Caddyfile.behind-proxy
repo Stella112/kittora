@@ -1,0 +1,17 @@
+# Used when another web server (nginx) already owns ports 80/443 and terminates HTTPS:
+# Caddy only serves the built mini app over plain HTTP inside the container (published on 127.0.0.1).
+{
+	auto_https off
+	admin off
+}
+
+:80 {
+	encode zstd gzip
+	root * /srv
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+	header -Server
+	# SPA: invite links such as /groups/3 load index.html, the app routes from there
+	try_files {path} /index.html
+	file_server
+}

@@ -89,6 +89,20 @@ Record each check in the BUILD_LOG.md test matrix (device, OS, Nimiq Pay version
 
 `DB_PATH` and `PORT` are set by `docker-compose.yml`.
 
+## Shared server where nginx already owns 80/443 (production: 56.125.248.192)
+The production VPS also hosts other sites behind nginx (port 80 through a stream multiplexer to `127.0.0.1:8080`,
+certificates from certbot's webroot `/var/www/firstbell-acme`, renewed by `firstbell-cert-renew.timer`).
+Kittora is added without touching them:
+1. Containers on localhost only:
+   `docker compose -f docker-compose.yml -f docker-compose.behind-nginx.yml up -d --build`
+   (app on `127.0.0.1:8280`, relayer on `127.0.0.1:8788`).
+2. nginx stage 1: copy `deploy/vps/nginx/kittora-http.conf` to `/etc/nginx/sites-available/kittora`, link it into
+   `sites-enabled`, `nginx -t`, reload. It only answers for the kittora.xyz names.
+3. After DNS points at the server:
+   `sudo /opt/firstbell-certbot/bin/certbot certonly --webroot -w /var/www/firstbell-acme --cert-name kittora -d kittora.xyz -d www.kittora.xyz -d api.kittora.xyz --deploy-hook "systemctl reload nginx"`
+   The existing renewal timer then renews it with the others.
+4. nginx stage 2: replace the site with `deploy/vps/nginx/kittora.conf`, `nginx -t`, reload.
+
 ## Alternative: managed hosting (Vercel + Railway + Neon)
 Still supported, but no longer the main path:
 - Relayer on Railway via the root `railway.json` (Dockerfile `apps/relayer/Dockerfile`, 1 replica, `/health`).

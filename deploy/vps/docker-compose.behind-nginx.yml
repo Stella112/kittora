@@ -1,0 +1,16 @@
+# Override for a server where nginx already owns ports 80/443 (other sites live there).
+# Both containers publish on 127.0.0.1 only; nginx terminates HTTPS and proxies to them
+# (deploy/vps/nginx/kittora.conf). Use:
+#   docker compose -f docker-compose.yml -f docker-compose.behind-nginx.yml up -d --build
+services:
+  relayer:
+    ports:
+      - "127.0.0.1:8788:8788"
+
+  web:
+    build:
+      args:
+        CADDYFILE: deploy/vps/Caddyfile.behind-proxy
+    ports: !override
+      - "127.0.0.1:8280:80"
+    volumes: !reset []

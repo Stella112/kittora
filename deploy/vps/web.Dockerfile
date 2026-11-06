@@ -22,5 +22,7 @@ ENV VITE_RELAYER_URL=https://api.${DOMAIN} \
 RUN test -n "$DOMAIN" && pnpm --filter @kittora/web build
 
 FROM caddy:2.10.2-alpine
-COPY deploy/vps/Caddyfile /etc/caddy/Caddyfile
+# deploy/vps/Caddyfile (Caddy owns 80/443, automatic HTTPS) or Caddyfile.behind-proxy (nginx in front)
+ARG CADDYFILE=deploy/vps/Caddyfile
+COPY ${CADDYFILE} /etc/caddy/Caddyfile
 COPY --from=build /app/apps/web/dist /srv
