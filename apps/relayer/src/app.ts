@@ -52,17 +52,34 @@ export function build(cfg: Config = loadConfig()) {
     }
   })
 
-  /** Which pockets/groups/bonds/mandates an EVM address has (ids only; read values live from chain). */
-  app.get('/me/:evm', async (c) => {
-    const evm = c.req.param('evm')
-    if (!/^0x[0-9a-fA-F]{40}$/.test(evm)) return c.json({ error: 'bad_params', message: 'bad address' }, 400)
+  const plain = (r: unknown) => JSON.parse(JSON.stringify(r, (_k, v) => (typeof v === 'bigint' ? v.toString() : v)))
+  const indexed = (fn: () => Promise<unknown>) => async (c: any) => {
     try {
-      const r = await indexer.of(evm)
-      return c.json(JSON.parse(JSON.stringify(r, (_k, v) => (typeof v === 'bigint' ? v.toString() : v))))
+      return c.json(plain(await fn()))
     } catch (e) {
       log.error({ err: String(e) }, 'indexer error')
       return c.json({ error: 'rpc_down', message: 'could not read the chain, please retry' }, 503)
     }
+  }
+  const isEvm = (s: string) => /^0x[0-9a-fA-F]{40}$/.test(s)
+  const badParams = (c: any, message: string) => c.json({ error: 'bad_params', message }, 400)
+
+  /** Which pockets/groups/bonds/mandates an EVM address has (ids only; read values live from chain). */
+  app.get('/me/:evm', (c) => {
+    const evm = c.req.param('evm')
+    return isEvm(evm) ? indexed(() => indexer.of(evm))(c) : badParams(c, 'bad address')
+  })
+
+  /** Loan and grant ids of a group (the contract cannot enumerate them per group). */
+  app.get('/group/:id', (c) => {
+    const id = c.req.param('id')
+    return /^\d{1,12}$/.test(id) ? indexed(() => indexer.groupIndex(BigInt(id)))(c) : badParams(c, 'bad group id')
+  })
+
+  /** On-chain activity of an address, newest first, with tx hashes and block times. */
+  app.get('/activity/:evm', (c) => {
+    const evm = c.req.param('evm')
+    return isEvm(evm) ? indexed(() => indexer.activity(evm))(c) : badParams(c, 'bad address')
   })
 
   app.post('/relay', async (c) => {

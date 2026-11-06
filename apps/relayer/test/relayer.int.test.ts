@@ -3,7 +3,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { encodeFunctionData, parseAbi, type Address, type Hex } from 'viem'
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from 'viem/accounts'
 import { KeyPair } from '@nimiq/core'
-import { vaultTyped, groupTyped, usdtMetaTxTyped, linkMessage, linkHash, PocketVaultAbi } from '@kittora/core'
+import { vaultTyped, groupTyped, usdtMetaTxTyped, linkMessage, linkHash, PocketVaultAbi, GroupKittyAbi } from '@kittora/core'
 import { startFork, fundUsdt, ANVIL_KEYS, USDT } from './fork.ts'
 import { build } from '../src/app.ts'
 import { loadConfig } from '../src/config.ts'
@@ -26,7 +26,7 @@ const DL = () => String(Math.floor(Date.now() / 1000) + 3600)
 function cfg(over: Record<string, string> = {}) {
   return loadConfig({
     POLYGON_RPC_URL: f.url, CHAIN_ID: '137', RELAYER_PRIVATE_KEY: ANVIL_KEYS.relayer, ATTESTER_PRIVATE_KEY: ANVIL_KEYS.attester,
-    VAULT_ADDRESS: f.vault, GROUP_KITTY_ADDRESS: f.group, DB_PATH: join(dir, `db-${Math.random()}.sqlite`), LOG_LEVEL: 'silent', ...over,
+    VAULT_ADDRESS: f.vault, GROUP_KITTY_ADDRESS: f.group, DEPLOY_BLOCK: '96810001', DB_PATH: join(dir, `db-${Math.random()}.sqlite`), LOG_LEVEL: 'silent', ...over,
   })
 }
 
@@ -319,6 +319,83 @@ describe('NIM SafeLock: relayer link checks, watcher + attester forfeit', () => 
     expect((await w()).forfeited).toBe(0) // no second attempt
     db.close()
   })
+})
+
+describe('Group Kitty cycle through the relayer + group/activity index (Phase 5)', () => {
+  it('create, join, buy, guaranteed loan, disburse, repay, grant, Share-Out; index lists loans, grants, activity', async () => {
+    const chainTs = async () => (await f.pub.getBlock()).timestamp
+    // Deadlines must be ahead of both wall clock (relayer) and chain time (contract, warped by earlier tests).
+    const dl = async () => BigInt(Math.max(Math.floor(Date.now() / 1000), Number(await chainTs())) + 3600)
+    const [A, B, C] = [0, 1, 2].map(() => privateKeyToAccount(generatePrivateKey()))
+    for (const u of [A, B, C]) await fundUsdt(f, u.address, 20_000_000n)
+    const send = async (u: PrivateKeyAccount, action: string, primary: string, msg: Record<string, unknown>) => {
+      const params = Object.fromEntries(Object.entries(msg).map(([k, v]) => [k, typeof v === 'bigint' ? String(v) : Array.isArray(v) ? v.map(String) : v]))
+      const res = await post(r.app, { action, params, signature: await signGroup(u, primary, msg) })
+      expect(res.body.error, `${action}: ${res.body.message}`).toBeUndefined()
+      const rc = await wait(res.body.hash)
+      expect(rc.status).toBe('success')
+      return rc
+    }
+    const gn = (u: PrivateKeyAccount) => nonceOf(f.group, u.address)
+    const gkRead = (fn: string, args: unknown[]) => f.pub.readContract({ address: f.group, abi: GroupKittyAbi, functionName: fn as any, args: args as any }) as Promise<any>
+
+    const start = await chainTs()
+    await send(A, 'group.createGroup', 'CreateGroup', {
+      creator: A.address, sharePrice: 1_000_000n, socialFundPerMeeting: 200_000n, meetingInterval: 3600n, cycleEnd: start + 5n * 3600n,
+      gracePeriod: 600n, interestBps: 1000, maxLoanMultipleBps: 30000, maxSharesPerMeeting: 5, approvalsRequired: 1, maxMembers: 5, nonce: await gn(A), deadline: await dl(),
+    })
+    const g = await gkRead('groupCount', [])
+    for (const u of [B, C]) await send(u, 'group.join', 'JoinGroup', { member: u.address, groupId: g, nonce: await gn(u), deadline: await dl() })
+    for (const u of [A, B, C]) {
+      await wait((await gaslessApprove(u, f.group, 20_000_000n)).body.hash)
+      await send(u, 'group.buyShares', 'BuyShares', { member: u.address, groupId: g, shares: 5n, nonce: await gn(u), deadline: await dl() })
+    }
+
+    // B borrows 8: own 5 shares (value 5) + C pledges 3 shares. Interest 10% = 0.8.
+    await send(B, 'group.requestLoan', 'RequestLoan', { borrower: B.address, groupId: g, principal: 8_000_000n, duration: 3600n, guarantors: [C.address], pledges: [3n], nonce: await gn(B), deadline: await dl() })
+    const loanId = await gkRead('loanCount', [])
+    await send(C, 'group.approveLoan', 'ApproveLoan', { member: C.address, loanId, nonce: await gn(C), deadline: await dl() })
+    const d = await post(r.app, { action: 'group.disburse', params: { loanId: String(loanId) } })
+    expect(d.body.error).toBeUndefined()
+    await wait(d.body.hash)
+    expect((await gkRead('loan', [loanId])).status).toBe(2) // Disbursed
+    await send(B, 'group.repay', 'Repay', { payer: B.address, loanId, amount: 8_800_000n, nonce: await gn(B), deadline: await dl() })
+    expect((await gkRead('loan', [loanId])).status).toBe(3) // Repaid
+    expect((await gkRead('members', [g, C.address]))[3]).toBe(0n) // pledge released
+
+    // Social fund grant: A asks 0.3 of 0.6, B approves (1 approval required) → paid.
+    await send(A, 'group.requestGrant', 'RequestGrant', { member: A.address, groupId: g, amount: 300_000n, nonce: await gn(A), deadline: await dl() })
+    const grantId = await gkRead('grantCount', [])
+    await send(B, 'group.approveGrant', 'ApproveGrant', { member: B.address, grantId, nonce: await gn(B), deadline: await dl() })
+    expect((await gkRead('grants', [grantId]))[4]).toBe(true)
+
+    const gi = await (await r.app.request(`/group/${g}`)).json() as any
+    expect(gi.loanIds).toEqual([String(loanId)])
+    expect(gi.grantIds).toEqual([String(grantId)])
+    expect((await r.app.request('/group/abc')).status).toBe(400)
+
+    const actB = await (await r.app.request(`/activity/${B.address}`)).json() as any
+    const evB = actB.items.map((i: any) => i.event)
+    for (const e of ['MemberJoined', 'SharesBought', 'LoanRequested', 'LoanApproved', 'LoanDisbursed', 'LoanRepaid', 'GrantApproved']) expect(evB).toContain(e)
+    expect(evB[0]).toBe('GrantApproved') // newest first
+    expect(actB.items.every((i: any) => /^0x[0-9a-f]{64}$/.test(i.hash) && typeof i.ts === 'number')).toBe(true)
+    const evC = (await (await r.app.request(`/activity/${C.address}`)).json() as any).items.map((i: any) => i.event)
+    expect(evC).toContain('LoanRequested') // guarantor sees the loan they back
+    expect(evC).toContain('LoanDisbursed')
+    expect((await r.app.request('/activity/0x123')).status).toBe(400)
+
+    // Share-Out after cycle end: cash 15.8, social 0.3 → each ~5.3667; total paid is exactly 16.1.
+    await f.test.increaseTime({ seconds: 6 * 3600 })
+    await f.test.mine({ blocks: 1 })
+    const before = await Promise.all([A, B, C].map(u => usdtBal(u.address)))
+    for (const u of [A, B, C]) await send(u, 'group.claimShareOut', 'ClaimShareOut', { member: u.address, groupId: g, rollPocketId: 0n, nonce: await gn(u), deadline: await dl() })
+    const after = await Promise.all([A, B, C].map(u => usdtBal(u.address)))
+    const paid = after.map((x, i) => x - before[i])
+    expect(paid.reduce((a, b) => a + b, 0n)).toBe(16_100_000n)
+    for (const p of paid) expect(p >= 5_366_666n && p <= 5_366_668n).toBe(true)
+    const evA = (await (await r.app.request(`/activity/${A.address}`)).json() as any).items.map((i: any) => i.event)
+    expect(evA[0]).toBe('ShareOutClaimed')
+  }, 300_000)
 })
 
 describe('live Nimiq testnet RPC (read-only)', () => {

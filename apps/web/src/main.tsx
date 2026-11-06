@@ -10,11 +10,17 @@ import { OpenInNimiqPay } from './screens/OpenInNimiqPay.tsx'
 import { SignIn } from './screens/SignIn.tsx'
 import { Home } from './screens/Home.tsx'
 import { Disclosure } from './screens/Disclosure.tsx'
-import { Groups, Activity } from './screens/Placeholders.tsx'
+import { Activity } from './screens/Activity.tsx'
+import { Groups } from './screens/groups/Groups.tsx'
+import { NewGroup } from './screens/groups/NewGroup.tsx'
+import { Group } from './screens/groups/Group.tsx'
 import { Save } from './screens/save/Save.tsx'
 import { NewPocket } from './screens/save/NewPocket.tsx'
 import { Pocket } from './screens/save/Pocket.tsx'
 import { NimLock } from './screens/save/NimLock.tsx'
+
+// Local devnet only (vite --mode devnet). The constant is replaced at build time, so production drops this branch.
+if (import.meta.env.MODE === 'devnet') (await import('./dev/devnetHost.ts')).installDevnetHost()
 
 const router = createBrowserRouter([
   {
@@ -27,6 +33,8 @@ const router = createBrowserRouter([
       { path: '/save/pocket/:id', element: <Pocket /> },
       { path: '/save/nim', element: <NimLock /> },
       { path: '/groups', element: <Groups /> },
+      { path: '/groups/new', element: <NewGroup /> },
+      { path: '/groups/:id', element: <Group /> },
       { path: '/activity', element: <Activity /> },
       { path: '*', element: <Home /> },
     ],

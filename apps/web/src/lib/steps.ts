@@ -1,6 +1,6 @@
 // Reusable transaction steps for My Kitty flows.
 import type { Address } from 'viem'
-import { allowanceOf, gaslessApprove, VAULT } from './chainActions.ts'
+import { allowanceOf, deadline, gaslessApprove, signAndRelayVault, VAULT, vaultNonce } from './chainActions.ts'
 import type { TxStep } from '../components/TxFlow.tsx'
 import { usdt } from '../components/ui.tsx'
 
@@ -19,6 +19,14 @@ export function approveStep(owner: Address, amount: bigint, spender: () => Addre
     },
     run: () => gaslessApprove(owner, spender(), current + amount),
   }
+}
+
+/** Stop an Autosave, then reset the vault allowance to 0 (Maris item 5). */
+export function revokeMandateSteps(owner: Address, mandateId: bigint): TxStep[] {
+  return [
+    { label: 'Stop the Autosave', chain: 'polygon', run: async () => signAndRelayVault('vault.revokeMandate', 'RevokeMandate', owner, { owner, mandateId, nonce: await vaultNonce(owner), deadline: deadline() }) },
+    { ...setAllowanceStep(owner, 0n, 'Reset the USDT allowance to 0'), skip: async () => (await allowanceOf(owner, VAULT())) === 0n },
+  ]
 }
 
 export function setAllowanceStep(owner: Address, total: bigint, label: string, spender: () => Address = VAULT): TxStep {

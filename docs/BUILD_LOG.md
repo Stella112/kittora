@@ -107,3 +107,29 @@ Save/Groups/Activity tabs are labelled shells until Phases 4–5.
 - Constructor arguments: USDT0 `0xc213…8e8F`, aUSDT `0x6ab7…0620`, Aave Pool `0x794a…14aD` (all from the address book), burn `0x…dEaD`, claimDelay 3600 s.
 - Cost: ~1.04 POL. Relayer/deployer `0xb6F9…e962` has 1.96 POL left; attester `0xa592…8a12` has 1 POL.
 - `publicnode` refuses receipt/archive calls without a token, so the RPC was switched to `polygon.drpc.org`. A paid RPC key is still recommended for the pilot.
+
+## Nov 6 2026: Phase 5 (Group Kitty + Activity), built; device gate pending
+**Built (`apps/web/src/screens/groups`, `screens/Activity.tsx`, `lib/group.ts`, `lib/groupMath.ts`, `lib/activityFeed.ts`):**
+- **Groups list**: my groups with live share value; start a group; join by group number or pasted invite link.
+- **Start a group**: share price, social fund per meeting, meeting interval (hourly pilot / weekly / 2 weeks / 30 days), number of meetings, max shares per meeting, flat interest, loan multiple (1–3×), approvals, member cap (2–30), grace period. All validated against the contract's `BadParams` rules; the review lists every rule because they are immutable.
+- **Invite**: Nimiq Pay universal link to `/groups/<id>?name=…` (share sheet or copy). The group name is local only (not on-chain) and travels in the link.
+- **Group page**: header (my shares and value, pool, social fund, members, meeting n of N with countdown, current share value), **Save at this meeting** (1–5 shares + social fund once per meeting, pool-cap and balance checks, gasless approve), **group board** (shares per member over the last 4 meetings, missed marks, loan badges), **loans** (request with guarantors and pledges, live limit check mirroring `_checkLimit`; approve / guarantee; pay out; cancel; repay part or all, also by a guarantor; mark as defaulted after due + grace), **social fund** (request, approve; pays on the last approval), **Autosave into the group** (vault mandate `toGroup`, one run per meeting until Share-Out; stop + allowance reset), **Share-Out** (estimate, blocked while loans are open, claim to wallet or roll into a pocket), and the fixed group rules.
+- **Disclosure gate** before any money action (buy, repay, guarantee, Autosave, Share-Out). Join and plain approvals do not move the signer's money.
+- **Activity tab**: indexed contract events (one row per tx, plain words from the viewer's side, block time, Polygonscan link) merged with local pending / failed / Nimiq steps.
+- **Clock**: meeting index, due dates, cycle end and countdowns use the latest block time, not the phone clock, and signed deadlines are `max(phone, chain) + 20 min` (relayer checks wall time, contract checks block time).
+- **Unsigned relays** (pay out, mark default) say "Confirm (nothing to sign)" instead of asking for a Nimiq Pay signature.
+- **Relayer:** the indexer now decodes every vault and group event and serves `/group/:id` (loan and grant ids; the contract cannot enumerate per group) and `/activity/:evm` (feed with tx hashes and block times; guarantors see the loans they back).
+- **Local devnet** (`pnpm --filter @kittora/relayer devnet`, then the `web-devnet` launch config): anvil Polygon fork with `Deploy.s.sol`, relayer on :8789, three funded anvil dev accounts; `src/dev/devnetHost.ts` stands in for Nimiq Pay (`?as=0|1|2` switches member). It loads only in `--mode devnet`; the production bundle was grepped and contains none of it.
+
+**Evidence**
+- Relayer `pnpm test` on the anvil fork: **17/17** (new: full group cycle through `/relay` (create, 2 joins, 3 × buy, loan with a guarantor, approve, permissionless disburse, full repay, pledge released, grant request + approval paid), `/group/:id` lists the loan and grant, `/activity` newest-first with timestamps (guarantor included), Share-Out pays exactly 16.10 USDT in total (5.3667 each)).
+- Web: typecheck + build pass; **30 tests** (new: group math vs the DECISIONS.md worked examples (1.04 share value, Bob's 20 USDT loan with Carol's pledge, 10.8 Share-Out), invite parsing, activity labels and feed merge).
+- Clicked through in the browser on the devnet at 390 px as three members: create → join × 2 → buy 5 each → 8 USDT loan with a 3-share guarantee → guarantee → pay out → repay 8.80 → share value 1.05 → Share-Out 5.46 to wallet (= 15.80 × 5/15 + 0.60/3) → Activity rows. No console errors after reload.
+- Fixed while testing: meeting number from the phone clock (wrong on a skewed chain); signed deadline behind block time (relay rejected; now chain-aware); "You pledges" copy.
+
+**Open**
+- Device gate: the same cycle inside Nimiq Pay on Polygon mainnet with real members (≤1 USDT per action).
+- Group names are per device (and in the invite link), not on-chain.
+- The board marks meetings before a member joined as missed (no join time on-chain).
+- Group Autosave: a run in a meeting where the member already paid the social fund by hand reverts and retries each tick until the next meeting; if the social fund is a multiple of the share price it would buy extra shares instead. Prefer one method per group.
+- Bundle: main JS chunk 187 KB gzipped in the final build. Open time on a mid-range phone (<3 s) is still a device check.

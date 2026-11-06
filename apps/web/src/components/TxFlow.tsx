@@ -15,6 +15,8 @@ export interface TxStep {
   /** Optional custom confirmation (e.g. wait until the Nimiq stake is visible). */
   confirm?: (hash: string) => Promise<void>
   skip?: () => Promise<boolean>
+  /** false for permissionless relays (nothing for the user to sign in Nimiq Pay). */
+  signs?: boolean
 }
 
 export interface Summary {
@@ -76,13 +78,13 @@ export function TxFlow({ summary, steps, onDone, onCancel, owner, doneText = 'Do
           {summary.extra?.map(([k, v]) => <Row key={k} k={k} v={v} />)}
           <Row k="Network fee" v={<span className="font-semibold text-good">Covered by Kittora</span>} />
         </dl>
-        {steps.length > 1 && (
+        {steps.filter(s => s.signs !== false).length > 1 && (
           <div className="rounded-2xl bg-brand-soft p-3 text-sm">
             <p className="font-semibold">Nimiq Pay will ask you {steps.length === 2 ? 'twice' : `${steps.length} times`}:</p>
             <ol className="mt-1 list-decimal pl-5">{steps.map(s => <li key={s.label}>{s.label}</li>)}</ol>
           </div>
         )}
-        <Button onClick={() => start(0)}>Sign in Nimiq Pay</Button>
+        <Button onClick={() => start(0)}>{steps.some(s => s.signs !== false) ? 'Sign in Nimiq Pay' : 'Confirm (nothing to sign)'}</Button>
         <Button variant="ghost" onClick={onCancel}>Cancel</Button>
       </Card>
     )
@@ -91,7 +93,7 @@ export function TxFlow({ summary, steps, onDone, onCancel, owner, doneText = 'Do
   if (phase.k === 'running') {
     return (
       <Card className="space-y-3">
-        <Spinner label={phase.hash ? `Confirming: ${steps[phase.i].label}` : `Waiting for your signature: ${steps[phase.i].label}`} />
+        <Spinner label={phase.hash ? `Confirming: ${steps[phase.i].label}` : steps[phase.i].signs === false ? `Sending: ${steps[phase.i].label}` : `Waiting for your signature: ${steps[phase.i].label}`} />
         {phase.hash && <a className="block text-sm font-semibold text-brand-strong underline" href={link(steps[phase.i].chain, phase.hash)} target="_blank" rel="noreferrer">Pending: view on explorer</a>}
         <p className="text-sm text-muted">Step {phase.i + 1} of {steps.length}. Keep this screen open.</p>
       </Card>

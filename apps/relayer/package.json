@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "node --experimental-strip-types src/main.ts",
     "start": "node --experimental-strip-types src/main.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "devnet": "node --experimental-strip-types scripts/devnet.ts"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.6",

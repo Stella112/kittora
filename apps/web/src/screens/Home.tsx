@@ -7,7 +7,7 @@ import { classify, makeError } from '../lib/errors.ts'
 import { Button, Card, ErrorPanel, Spinner, usdt } from '../components/ui.tsx'
 import { disclosureAccepted } from './Disclosure.tsx'
 
-function useNow(ms = 1000) {
+export function useNow(ms = 1000) {
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000))
   useEffect(() => {
     const t = setInterval(() => setNow(Math.floor(Date.now() / 1000)), ms)
@@ -16,7 +16,7 @@ function useNow(ms = 1000) {
   return now
 }
 
-function countdown(at: bigint, now: number) {
+export function countdown(at: bigint, now: number) {
   let s = Math.max(0, Number(at) - now)
   const d = Math.floor(s / 86400); s -= d * 86400
   const h = Math.floor(s / 3600); s -= h * 3600

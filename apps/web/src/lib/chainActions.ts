@@ -43,7 +43,11 @@ const GROUP = () => { if (!config.groupKitty) throw makeError('not_deployed'); r
 
 export const vaultNonce = (a: Address) => reader().readContract({ address: VAULT(), abi: PocketVaultAbi as Abi, functionName: 'nonces', args: [a] }) as Promise<bigint>
 export const groupNonce = (a: Address) => reader().readContract({ address: GROUP(), abi: GroupKittyAbi as Abi, functionName: 'nonces', args: [a] }) as Promise<bigint>
-export const deadline = () => BigInt(Math.floor(Date.now() / 1000) + 20 * 60)
+// The relayer checks deadlines against wall time, the contract against block time: sign for the later of the two.
+let chainAhead = 0
+/** Record the latest block time seen (seconds) so deadlines stay valid if the chain clock runs ahead of the phone. */
+export function noteChainTime(ts: bigint) { chainAhead = Math.max(0, Number(ts) - Math.floor(Date.now() / 1000)) }
+export const deadline = () => BigInt(Math.floor(Date.now() / 1000) + chainAhead + 20 * 60)
 
 export async function signAndRelayVault(action: string, primary: VaultPrimary, owner: Address, message: Record<string, unknown>, extra: Record<string, unknown> = {}): Promise<Hex> {
   const sig = await signTypedJson(owner, toSignTypedDataV4(vaultTyped(VAULT(), primary, message, config.chainId)))
@@ -57,7 +61,13 @@ export async function signAndRelayGroup(action: string, primary: GroupPrimary, s
   return hash
 }
 
-export const usdtBalance = (a: Address) => reader().readContract({ address: USDT_POLYGON, abi: usdtAbi, functionName: 'balanceOf', args: [a] })
+/** Permissionless calls (disburse, markDefault): nothing to sign, the contract checks every rule. */
+export async function relayOpen(action: 'group.disburse' | 'group.markDefault', loanId: bigint): Promise<Hex> {
+  const { hash } = await relayer.relay({ action, params: { loanId } })
+  return hash
+}
+
+export const usdtBalance =(a: Address) => reader().readContract({ address: USDT_POLYGON, abi: usdtAbi, functionName: 'balanceOf', args: [a] })
 export const allowanceOf = (a: Address, spender: Address) => reader().readContract({ address: USDT_POLYGON, abi: usdtAbi, functionName: 'allowance', args: [a, spender] })
 
 /** Gasless USDT approve(spender, amount) via the token's meta-transaction, the same pattern Nimiq Pay uses. */
