@@ -13,7 +13,7 @@ Kittora
 Save in dollars and run your savings group from Nimiq Pay: shares, guaranteed loans and Share-Out, gas-free on Polygon.
 
 **Live URL**
-https://kittora.xyz `(TODO: check it loads after docs/DEPLOY.md step 5)` (opens the "Open in Nimiq Pay" screen on desktop; the app runs inside Nimiq Pay)
+https://kittora.xyz (opens the "Open in Nimiq Pay" screen on desktop; the app runs inside Nimiq Pay)
 
 **What it does and what to try**
 Kittora is a Nimiq Pay mini app for saving in USDT and for savings groups (VSLA / esusu) on Polygon mainnet.
@@ -43,6 +43,7 @@ Claude Code (Claude Opus). `TODO: add any other tools you used.`
 - Fundable score link (fundable.vibestarter.xyz, shown to judges for information, not scored): `TODO`
 
 ## Before submitting
-- [ ] Live URL loads and the phone smoke test in docs/DEPLOY.md step 4 passes
-- [ ] Relayer `/health` is `ok:true` (enough POL)
+- [x] Live URL loads (https://kittora.xyz, Nov 6)
+- [ ] Phone smoke test in Nimiq Pay (docs/DEPLOY.md, step 6) passes
+- [x] Relayer `/health` is `ok:true` (1.96 POL, Nov 6)
 - [ ] Theme "Night shift": decide whether and how to mention it (not written here)

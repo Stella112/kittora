@@ -168,3 +168,15 @@ The managed configs stay as a documented alternative.
 **Open**
 - Docker is not installed here: the first `docker compose up --build` on the VPS is the real build test.
 - `main` must be pushed before the VPS can clone it.
+
+## Nov 6 2026: live at https://kittora.xyz
+Deployed on the team's existing AWS Lightsail VPS (56.125.248.192, Ubuntu 24.04), shared with other sites behind its nginx; nothing of theirs was changed.
+- `~/kittora` (git clone of `main`), `docker compose -f docker-compose.yml -f docker-compose.behind-nginx.yml`: web on 127.0.0.1:8280, relayer on 127.0.0.1:8788 (SQLite volume).
+- nginx site `kittora` (only the kittora.xyz names), checked with `nginx -t` and reloaded gracefully; keepflow.site checked 200 before and after.
+- Let's Encrypt certificate `kittora` (kittora.xyz, www, api) via the server's existing certbot webroot, renewed by its existing timer with an nginx reload hook. Valid to Feb 4 2027.
+- DNS at Namecheap: A records `@`, `api`, `www` → 56.125.248.192 (seen on 1.1.1.1 and 8.8.8.8).
+- Keys entered by the team directly on the server; checked only for format (0x + 64 hex) and by the addresses the relayer reports.
+
+**Evidence (from the internet):** `https://kittora.xyz` 200 with a valid certificate; `/groups/3` 200 (SPA fallback); `http://` and `www.` → 308 to `https://kittora.xyz`; `https://api.kittora.xyz/health` `ok:true`, relayer `0xb6F9…e962` with 1.96 POL, attester `0xa592…8a12` with 1 POL, scheduler and watcher ticking; `/auth/challenge` 200; index caught up to block 96,849,880; unknown relay actions rejected.
+
+**Open:** the phone smoke test inside Nimiq Pay (`https://nimpay.app/miniapps/open/kittora.xyz`); `VITE_NIM_VALIDATOR` (Maris's pick) then a rebuild of the web image.
