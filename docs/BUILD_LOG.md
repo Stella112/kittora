@@ -94,3 +94,16 @@ Save/Groups/Activity tabs are labelled shells until Phases 4–5.
 **Evidence:** web typecheck + build pass; 23 web tests pass (amount parsing incl. NIM→Luna, ray→%, Nimiq address vs @nimiq/core, typed-data JSON round-trip as the host signs it for LockBond / CreateMandate / Withdraw(max) / RequestLoan(arrays) / USDT meta-tx, plus the error cases). The relayer integration suite (14/14) already proves the same messages are accepted on-chain.
 
 **Gate 4 still open (device + deploy):** deposits / withdrawals inside Nimiq Pay on Polygon mainnet (≤1 USDT per action, after Maris approves the deploy); NIM SafeLock on testnet; Autosave twice + revoke on schedule. Unknown until S2: whether the staking SDK calls return a tx hash (the explorer link uses the returned value). `VITE_NIM_VALIDATOR` needs Maris's pick.
+
+## Nov 6 2026: Polygon mainnet deploy (approved by Maris: "Yes, deploy")
+| Contract | Address | Deploy tx | Block |
+|---|---|---|---|
+| PocketVault | [0x7B1e1bAed045Db95b5F5b3E1e6E50efdac851251](https://polygonscan.com/address/0x7b1e1baed045db95b5f5b3e1e6e50efdac851251) | [0xf3d6263e…](https://polygonscan.com/tx/0xf3d6263ea60ccf5cdac4c91716c9ec35589f331bb27d85d86c8b159ac894afd4) | 96,840,641 |
+| GroupKitty | [0x2271dA8756185B48A46A17051fF3A90d6481ed5f](https://polygonscan.com/address/0x2271da8756185b48a46a17051ff3a90d6481ed5f) | [0x069d24d4…](https://polygonscan.com/tx/0x069d24d40649394d8b8ef7f9fefd8c2b2b14c06b30002575dd6b38641445d719) | 96,840,642 |
+| `setGroupKitty` wiring | | [0x27a2973a…](https://polygonscan.com/tx/0x27a2973a1fff1fbcba41133d6ecada5442ade13dc53a5d6add22d7638a821d72) | 96,840,643 |
+
+- All three receipts have status 1. On-chain checks: `vault.groupKitty()` = GroupKitty, `gk.vault()` = PocketVault, `vault.attester()` = 0xa5924b26…8a12.
+- Both contracts verified on Polygonscan ("Pass - Verified") and Sourcify.
+- Constructor arguments: USDT0 `0xc213…8e8F`, aUSDT `0x6ab7…0620`, Aave Pool `0x794a…14aD` (all from the address book), burn `0x…dEaD`, claimDelay 3600 s.
+- Cost: ~1.04 POL. Relayer/deployer `0xb6F9…e962` has 1.96 POL left; attester `0xa592…8a12` has 1 POL.
+- `publicnode` refuses receipt/archive calls without a token, so the RPC was switched to `polygon.drpc.org`. A paid RPC key is still recommended for the pilot.
