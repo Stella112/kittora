@@ -7,7 +7,9 @@
 import { parseEventLogs, type Abi, type Address, type Hex, type PublicClient } from 'viem'
 import { PocketVaultAbi, GroupKittyAbi } from '@kittora/core'
 
-const CHUNK = 9_000n
+const MIN_CHUNK = 10n
+/** Providers cap eth_getLogs ranges (drpc free ≈ 100 blocks despite its "10000" message, 1rpc 50): shrink on rejection. */
+const RANGE_ERROR = /range|limit|too many|exceed|block/i
 const FEED_LIMIT = 100
 
 export interface FeedItem {
@@ -38,11 +40,16 @@ export class Indexer {
   private grantMember = new Map<string, string>()
   private blockTs = new Map<bigint, number>()
   private running: Promise<void> | null = null
+  /** Current eth_getLogs block span; starts large and only ever shrinks. */
+  chunk: bigint
+  private waitMs: number
   private pub: PublicClient
   private vault: Address
   private group: Address
 
-  constructor(pub: PublicClient, vault: Address, group: Address, deployBlock: bigint) {
+  constructor(pub: PublicClient, vault: Address, group: Address, deployBlock: bigint, chunk = 9_000n, waitMs = 5_000) {
+    this.chunk = chunk
+    this.waitMs = waitMs
     this.pub = pub
     this.vault = vault
     this.group = group
@@ -50,8 +57,26 @@ export class Indexer {
   }
 
   sync(): Promise<void> {
-    this.running ??= this.doSync().finally(() => { this.running = null })
+    if (!this.running) {
+      this.running = this.doSync().finally(() => { this.running = null })
+      this.running.catch(() => undefined) // a caller may stop waiting (fresh); never leave the rejection unhandled
+    }
     return this.running
+  }
+
+  /**
+   * Sync, but wait at most `budgetMs`: a long catch-up on a slow RPC (free plans cap eth_getLogs at ~100 blocks)
+   * keeps running in the background and the caller gets what is indexed so far (`scannedTo` says how far).
+   * An RPC failure inside the budget still throws.
+   */
+  async fresh(budgetMs = this.waitMs): Promise<void> {
+    let timer: NodeJS.Timeout | undefined
+    const budget = new Promise<void>(res => { timer = setTimeout(res, budgetMs) })
+    try {
+      await Promise.race([this.sync(), budget])
+    } finally {
+      clearTimeout(timer)
+    }
   }
 
   private add(map: Map<string, bigint[]>, who: string, id: bigint) {
@@ -74,12 +99,22 @@ export class Indexer {
     const head = await this.pub.getBlockNumber()
     while (this.scanned < head) {
       const fromBlock = this.scanned + 1n
-      const toBlock = fromBlock + CHUNK - 1n > head ? head : fromBlock + CHUNK - 1n
+      const toBlock = fromBlock + this.chunk - 1n > head ? head : fromBlock + this.chunk - 1n
       // Plain address filters (no topic lists): free RPC plans reject OR-topic filters; we decode locally instead.
-      const [rawVault, rawGroup] = await Promise.all([
-        this.pub.getLogs({ address: this.vault, fromBlock, toBlock }),
-        this.pub.getLogs({ address: this.group, fromBlock, toBlock }),
-      ])
+      let rawVault, rawGroup
+      try {
+        [rawVault, rawGroup] = await Promise.all([
+          this.pub.getLogs({ address: this.vault, fromBlock, toBlock }),
+          this.pub.getLogs({ address: this.group, fromBlock, toBlock }),
+        ])
+      } catch (e) {
+        const span = toBlock - fromBlock + 1n
+        if (span > MIN_CHUNK && RANGE_ERROR.test(String((e as Error)?.message ?? e))) {
+          this.chunk = span / 2n > MIN_CHUNK ? span / 2n : MIN_CHUNK
+          continue // retry the same start block with the smaller span
+        }
+        throw e
+      }
       for (const l of parseEventLogs({ abi: PocketVaultAbi as Abi, logs: rawVault }) as unknown as Log[]) this.onVault(l)
       for (const l of parseEventLogs({ abi: GroupKittyAbi as Abi, logs: rawGroup }) as unknown as Log[]) this.onGroup(l)
       this.scanned = toBlock
@@ -134,7 +169,7 @@ export class Indexer {
   }
 
   async of(address: string) {
-    await this.sync()
+    await this.fresh()
     const k = address.toLowerCase()
     return {
       pocketIds: this.pockets.get(k) ?? [],
@@ -146,14 +181,14 @@ export class Indexer {
   }
 
   async groupIndex(groupId: bigint) {
-    await this.sync()
+    await this.fresh()
     const k = String(groupId)
     return { loanIds: this.groupLoans.get(k) ?? [], grantIds: this.groupGrants.get(k) ?? [], scannedTo: this.scanned }
   }
 
   /** Newest first, at most FEED_LIMIT items, each with its block timestamp. */
   async activity(address: string) {
-    await this.sync()
+    await this.fresh()
     const items = [...(this.feed.get(address.toLowerCase()) ?? [])]
       .sort((x, y) => (x.block === y.block ? y.logIndex - x.logIndex : Number(y.block - x.block)))
       .slice(0, FEED_LIMIT)

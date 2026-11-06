@@ -133,3 +133,18 @@ Save/Groups/Activity tabs are labelled shells until Phases 4–5.
 - The board marks meetings before a member joined as missed (no join time on-chain).
 - Group Autosave: a run in a meeting where the member already paid the social fund by hand reverts and retries each tick until the next meeting; if the social fund is a multiple of the share price it would buy extra shares instead. Prefer one method per group.
 - Bundle: main JS chunk 187 KB gzipped in the final build. Open time on a mid-range phone (<3 s) is still a device check.
+
+## Nov 6 2026: deploy readiness (Postgres, hosting configs, runbook)
+**Built**
+- **Postgres for the relayer** (Neon, DECISIONS.md item 14): set `DATABASE_URL` and the same Drizzle schema and queries run on Postgres through the sqlite-proxy driver (`?` placeholders numbered for Postgres, int8 read as numbers). Without it, local SQLite as before. The relayer exits at start with `database not reachable` if the URL is wrong.
+- **Hosting configs**: `apps/relayer/Dockerfile` (Node 24, production-only filtered install from the lockfile, runs TypeScript with type stripping), root `railway.json` (Dockerfile, 1 replica, `/health` check), `.dockerignore`, `apps/web/vercel.json` (filtered install, SPA rewrite so invite links like `/groups/3` load, long cache for hashed assets).
+- **Indexer on free RPC plans**: the `eth_getLogs` span halves whenever the provider rejects a range (drpc free ≈ 100 blocks, though its error says 10000), reads wait at most `INDEX_WAIT_MS` (5 s) and then answer with what is indexed so far, and a background loop keeps the index warm.
+- **Runbook** `docs/DEPLOY.md` (Neon → Railway → Vercel → phone smoke test, every variable, mainnet addresses) and a **submission draft** `submission/SUBMISSION.md` (form fields with TODOs only the team can fill).
+
+**Evidence**
+- Relayer tests: Postgres backend via PGlite (real Postgres in WASM, test only) runs the same queries as SQLite: rate-limit count, relay record, Autosave idempotency key with conflict ignored, forfeit uniqueness (9 tests on both backends); indexer range shrinking, bounded wait, and real errors still thrown (3 tests, mocked RPC labelled TEST MOCK).
+- Dockerfile steps replayed without Docker (not installed here): clean copy of the same files, `pnpm install --frozen-lockfile --prod --filter @kittora/relayer...`, then the start command. Against **Polygon mainnet** (read-only, anvil's public test key with 0 POL): `/health` 200 with the low-POL alert firing; a bad `DATABASE_URL` exits 1 with the clear message; the index caught up from block 96,840,641 in the background while `/group/1` answered in 5 s, then ~2 s once caught up; no errors logged.
+
+**Open**
+- The image itself was not built (no Docker here): Railway's first build is the real test.
+- The actual Neon / Railway / Vercel setup needs the team's accounts and secrets (DEPLOY.md).

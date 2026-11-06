@@ -24,6 +24,8 @@ const schema = z.object({
   USDT_ADDRESS: addr.default('0xc2132D05D31c914a87C6611C10748AEb04B58e8F'),
   NIMIQ_RPC_URL: z.string().url().default('https://rpc.nimiqwatch.com'), // mainnet (nimiq-pay-app mini-app-launcher.ts),
   DB_PATH: z.string().default('relayer.db'),
+  /** Postgres connection string (Neon). When set, it is used instead of the local SQLite file. */
+  DATABASE_URL: z.string().regex(/^postgres(ql)?:\/\//).optional(),
   GAS_CAP: z.coerce.bigint().default(1_500_000n),
   RATE_LIMIT_PER_HOUR: z.coerce.number().default(60),
   MIN_POL_WEI: z.coerce.bigint().default(500_000_000_000_000_000n), // 0.5 POL
@@ -32,6 +34,10 @@ const schema = z.object({
   LOG_LEVEL: z.string().default('info'),
   SESSION_SECRET: z.string().min(16).optional(),
   DEPLOY_BLOCK: z.coerce.bigint().default(0n),
+  /** Starting eth_getLogs span for the indexer; it shrinks automatically if the RPC rejects the range. */
+  LOG_CHUNK: z.coerce.bigint().default(9_000n),
+  /** Longest an API request waits for the indexer to catch up before answering with what it has. */
+  INDEX_WAIT_MS: z.coerce.number().default(5_000),
 })
 
 export type Config = z.infer<typeof schema>

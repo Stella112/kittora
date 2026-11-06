@@ -14,13 +14,19 @@
     "@nimiq/core": "^2.23.0",
     "drizzle-orm": "^0.45.4",
     "hono": "^4.13.16",
+    "pg": "8.23.1",
     "pino": "^10.4.0",
     "viem": "^2.57.16",
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.15",
     "@types/node": "^26.6.6",
+    "@types/pg": "^8.23.1",
     "typescript": "^7.0.2",
     "vitest": "^5.1.0"
+  },
+  "engines": {
+    "node": ">=22.18"
   }
 }

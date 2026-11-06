@@ -1,0 +1,12 @@
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+!**/.env.example
+**/*.db
+**/*.sqlite
+packages/contracts
+apps/spike
+apps/web
+.git
+.claude

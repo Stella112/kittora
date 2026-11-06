@@ -4,7 +4,7 @@ import pino from 'pino'
 import type { Hex } from 'viem'
 import { loadConfig, type Config } from './config.ts'
 import { makeChain, publicClient, RelayError, TxSender } from './chain.ts'
-import { openDb } from './db.ts'
+import { openDb, openPgDb, pgPool } from './db.ts'
 import { NimiqRpc } from './nimiq.ts'
 import { handleRelay, type Deps, type RelayRequest } from './policy.ts'
 import { schedulerTick } from './scheduler.ts'
@@ -21,14 +21,14 @@ export function build(cfg: Config = loadConfig()) {
   const attester = cfg.ATTESTER_PRIVATE_KEY
     ? new TxSender(pub, cfg.ATTESTER_PRIVATE_KEY as Hex, chain, cfg.POLYGON_RPC_URL, log.child({ wallet: 'attester' }), cfg.GAS_CAP)
     : null
-  const { db, close } = openDb(cfg.DB_PATH)
+  const { db, ready: dbReady, close } = cfg.DATABASE_URL ? openPgDb(pgPool(cfg.DATABASE_URL)) : openDb(cfg.DB_PATH)
   const nimiq = new NimiqRpc(cfg.NIMIQ_RPC_URL)
   const addresses = { vault: cfg.VAULT_ADDRESS, group: cfg.GROUP_KITTY_ADDRESS, usdt: cfg.USDT_ADDRESS }
   const deps: Deps = { pub, sender, db, nimiq, chainId: cfg.CHAIN_ID, addresses, rateLimitPerHour: cfg.RATE_LIMIT_PER_HOUR }
 
   if (!cfg.SESSION_SECRET) log.warn('SESSION_SECRET not set: using a random one (sessions reset on restart)')
   const auth = new Auth(cfg.SESSION_SECRET ?? randomBytes(32).toString('hex'))
-  const indexer = new Indexer(pub, addresses.vault, addresses.group, cfg.DEPLOY_BLOCK)
+  const indexer = new Indexer(pub, addresses.vault, addresses.group, cfg.DEPLOY_BLOCK, cfg.LOG_CHUNK, cfg.INDEX_WAIT_MS)
 
   const app = new Hono()
   app.use('*', cors())
@@ -132,6 +132,8 @@ export function build(cfg: Config = loadConfig()) {
       tick()
       timers.push(setInterval(tick, ms))
     }
+    // Keep the read index warm so API requests rarely wait on a catch-up.
+    loop(15_000, () => indexer.sync())
     loop(cfg.SCHEDULER_INTERVAL_MS, async () => {
       await checkBalances()
       const r = await schedulerTick({ pub, sender, db, log: log.child({ svc: 'scheduler' }), vault: addresses.vault, usdt: addresses.usdt })
@@ -149,5 +151,5 @@ export function build(cfg: Config = loadConfig()) {
     }
   }
 
-  return { app, log, deps, auth, indexer, sender, attester, startLoops, stop: () => { timers.forEach(clearInterval); close() } }
+  return { app, log, dbReady, deps, auth, indexer, sender, attester, startLoops, stop: () => { timers.forEach(clearInterval); close() } }
 }
