@@ -1,0 +1,24 @@
+# Caddy gets and renews Let's Encrypt certificates for both names automatically
+# (DNS A records for $DOMAIN and api.$DOMAIN must point at this server first).
+
+{$DOMAIN} {
+	encode zstd gzip
+	root * /srv
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+	header -Server
+	# SPA: invite links such as /groups/3 load index.html, the app routes from there
+	try_files {path} /index.html
+	file_server
+}
+
+www.{$DOMAIN} {
+	redir https://{$DOMAIN}{uri} permanent
+}
+
+api.{$DOMAIN} {
+	encode zstd gzip
+	header -Server
+	# Caddy ignores client-sent X-Forwarded-For (no trusted proxies), so the relayer's per-IP rate limit sees the real client
+	reverse_proxy relayer:8788
+}

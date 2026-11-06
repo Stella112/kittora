@@ -13,7 +13,7 @@ Kittora
 Save in dollars and run your savings group from Nimiq Pay: shares, guaranteed loans and Share-Out, gas-free on Polygon.
 
 **Live URL**
-`TODO: Vercel URL after docs/DEPLOY.md step 3` (opens the "Open in Nimiq Pay" screen on desktop; the app runs inside Nimiq Pay)
+https://kittora.xyz `(TODO: check it loads after docs/DEPLOY.md step 5)` (opens the "Open in Nimiq Pay" screen on desktop; the app runs inside Nimiq Pay)
 
 **What it does and what to try**
 Kittora is a Nimiq Pay mini app for saving in USDT and for savings groups (VSLA / esusu) on Polygon mainnet.

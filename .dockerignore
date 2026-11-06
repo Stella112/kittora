@@ -7,6 +7,9 @@
 **/*.sqlite
 packages/contracts
 apps/spike
-apps/web
+apps/web/dist
 .git
 .claude
+# server-only files (secrets): never part of an image
+deploy/vps/relayer.env
+deploy/vps/.env

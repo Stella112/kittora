@@ -1,0 +1,45 @@
+# Kittora on one VPS: Caddy (HTTPS + the mini app) in front of the relayer.
+#   https://$DOMAIN        → mini app (static build)
+#   https://api.$DOMAIN    → relayer
+# Run from this folder:  docker compose up -d --build     (see docs/DEPLOY.md)
+name: kittora
+
+services:
+  relayer:
+    build:
+      context: ../..
+      dockerfile: apps/relayer/Dockerfile
+    env_file: relayer.env            # secrets live here, on the server only (chmod 600)
+    environment:
+      PORT: "8788"
+      DB_PATH: /data/relayer.db      # SQLite on a persistent volume; DATABASE_URL stays unset
+    volumes:
+      - relayer-data:/data
+    restart: unless-stopped
+    expose:
+      - "8788"                       # reachable only through Caddy, not from the internet
+
+  web:
+    build:
+      context: ../..
+      dockerfile: deploy/vps/web.Dockerfile
+      args:
+        DOMAIN: ${DOMAIN:?set DOMAIN in deploy/vps/.env}
+        VITE_NIM_VALIDATOR: ${VITE_NIM_VALIDATOR:-}
+    environment:
+      DOMAIN: ${DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy-data:/data             # TLS certificates (keep this volume)
+      - caddy-config:/config
+    depends_on:
+      - relayer
+    restart: unless-stopped
+
+volumes:
+  relayer-data:
+  caddy-data:
+  caddy-config:

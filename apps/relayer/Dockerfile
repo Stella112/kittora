@@ -15,6 +15,8 @@ RUN pnpm install --frozen-lockfile --prod --filter @kittora/relayer...
 COPY packages/core/src packages/core/src
 COPY apps/relayer/src apps/relayer/src
 
+# /data holds the SQLite file on a VPS volume (named volumes inherit this ownership on first mount).
+RUN mkdir -p /data && chown node:node /data
 WORKDIR /app/apps/relayer
 USER node
 # PORT is provided by the platform; every other setting comes from environment variables (see docs/DEPLOY.md).

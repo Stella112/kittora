@@ -148,3 +148,23 @@ Save/Groups/Activity tabs are labelled shells until Phases 4–5.
 **Open**
 - The image itself was not built (no Docker here): Railway's first build is the real test.
 - The actual Neon / Railway / Vercel setup needs the team's accounts and secrets (DEPLOY.md).
+
+## Nov 6 2026: VPS hosting (main path) on the team's domain
+Hosting moved from Vercel + Railway + Neon to **one VPS** on **kittora.xyz** (team decision: avoid paid-tier limits; domain confirmed).
+The managed configs stay as a documented alternative.
+
+**Built (`deploy/vps/`)**
+- `docker-compose.yml`: `relayer` (existing Dockerfile; SQLite on the `relayer-data` volume; only reachable through Caddy) and `web` (Caddy on 80/443 with automatic Let's Encrypt; certificates on the `caddy-data` volume).
+- `web.Dockerfile`: builds the mini app with `VITE_RELAYER_URL=https://api.$DOMAIN`, `VITE_PUBLIC_URL=https://$DOMAIN` and the mainnet addresses, then serves it from Caddy.
+- `Caddyfile`: `$DOMAIN` (SPA fallback for invite links, immutable asset caching), `www.` → root, `api.` → relayer. Caddy ignores client-sent `X-Forwarded-For`, so the relayer's per-IP rate limit sees the real client.
+- `env.example` (DOMAIN, validator) and `relayer.env.example` (pre-filled mainnet settings; the three secrets are filled on the server only). `relayer.env` is git-ignored and excluded from every Docker build context.
+- `docs/DEPLOY.md` rewritten: VPS, DNS records, server setup, start, smoke test, day-2 (update, logs, backup).
+
+**Evidence**
+- Web image build steps replayed in a clean copy (filtered install from the lockfile, production env, `DOMAIN=kittora.xyz`): build passes; the bundle contains `https://api.kittora.xyz` and the vault address, and no `localhost:8788` or devnet code. Local `.env*` files are excluded from the build context.
+- Image tags checked on Docker Hub: `node:24-slim`, `caddy:2.10.2-alpine`.
+- The relayer image steps were already replayed against mainnet (entry above).
+
+**Open**
+- Docker is not installed here: the first `docker compose up --build` on the VPS is the real build test.
+- `main` must be pushed before the VPS can clone it.

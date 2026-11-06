@@ -1,0 +1,26 @@
+# Builds the mini app with production settings, then serves it with Caddy (automatic HTTPS).
+# Build context = repository root (docker-compose.yml sets it).
+FROM node:24-slim AS build
+RUN corepack enable
+WORKDIR /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/core/package.json packages/core/
+COPY apps/web/package.json apps/web/
+RUN pnpm install --frozen-lockfile --filter @kittora/web...
+COPY packages/core/src packages/core/src
+COPY apps/web apps/web
+
+ARG DOMAIN
+ARG VITE_NIM_VALIDATOR=""
+# Public values only (Vite bakes them into the bundle). Contracts: Polygon mainnet, BUILD_LOG.md Nov 6.
+ENV VITE_RELAYER_URL=https://api.${DOMAIN} \
+    VITE_PUBLIC_URL=https://${DOMAIN} \
+    VITE_VAULT_ADDRESS=0x7B1e1bAed045Db95b5F5b3E1e6E50efdac851251 \
+    VITE_GROUP_KITTY_ADDRESS=0x2271dA8756185B48A46A17051fF3A90d6481ed5f \
+    VITE_CHAIN_ID=137 \
+    VITE_NIM_VALIDATOR=${VITE_NIM_VALIDATOR}
+RUN test -n "$DOMAIN" && pnpm --filter @kittora/web build
+
+FROM caddy:2.10.2-alpine
+COPY deploy/vps/Caddyfile /etc/caddy/Caddyfile
+COPY --from=build /app/apps/web/dist /srv

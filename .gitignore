@@ -9,3 +9,5 @@ packages/contracts/broadcast/*/31337/
 *.db
 .DS_Store
 packages/contracts/broadcast/
+# VPS secrets (deploy/vps/relayer.env.example is the template)
+deploy/vps/relayer.env
