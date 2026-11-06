@@ -37,3 +37,8 @@
 - `NoLiquidity` on loans is unreachable by construction (RISKS.md), so that branch is uncovered.
 
 **Next:** Phase 2 (relayer, scheduler, watcher, attester).
+
+## Nov 6 2026: Phase 2 (in progress)
+**Built:** `packages/core` (generated ABIs, EIP-712 builders, Nimiq link message); `apps/relayer` (Hono): action whitelist, policy pipeline (deadline → nonce → signature → rate limit → simulate → gas cap → serialized nonce queue), `/relay`, `/status/:hash`, `/health` with low-POL alert, Autosave scheduler (idempotency key per mandate run), NIM watcher + attester (forfeits only on the explicit "No staker" reply or stake below the bond; never on an RPC error).
+**Evidence:** `pnpm --filter @kittora/relayer test` against an anvil Polygon fork with real deployed contracts. 12 of 14 pass: gasless happy path (user 0 POL, `tx.from` = relayer), and rejections for unknown action, bad params, forged, expired, replayed, foreign spender, simulation revert, gas cap and rate limit; bond link checks plus watcher forfeit emitting the Nimiq tx hash; live testnet RPC read.
+**Open:** 2 tests time out at 180 s (concurrent joins; scheduler restart). Likely the waits for receipts on the anvil fork, not yet diagnosed. Live testnet early-unstake run needs the phone (S2). Production Postgres driver not wired yet.
