@@ -80,3 +80,17 @@
 - Home with real data needs deployed contracts.
 
 Save/Groups/Activity tabs are labelled shells until Phases 4–5.
+
+## Nov 6 2026: Phase 4 (My Kitty flows), built; device gate pending
+**Built (`apps/web/src/screens/save`, `lib/chainActions.ts`, `components/TxFlow.tsx`):**
+- **Approval screen** for every action: what you sign, amount, chain, "Network fee: covered by Kittora", and the number of Nimiq Pay prompts. Three states: pending (explorer link), confirmed, failed (reason + retry; "check status" for pending).
+- **Flex / Target (named goal, progress bar) / SafeLock:** open + first deposit, deposit, withdraw (amount or all). SafeLock withdrawal is blocked in the UI with its unlock date before the date; the contract enforces it too.
+- **Gasless approvals:** USDT meta-tx approve only when the allowance is short, approving current + amount so it doesn't overwrite an Autosave budget.
+- **Autosave:** amount per run, interval (hourly pilot / daily / weekly / 30 days), runs. One approval of amount × runs, then create. Revoke stops it and resets the allowance to 0 (Maris item 5).
+- **NIM SafeLock:** stake via `sendNewStakerTransaction` / `sendStakeTransaction` (skipped if the active stake already covers it), wait until the relayer sees the stake, Nimiq `sign()` of the link message, `LockBond` relayed with the link proof. Bond list with claim after `unlockAt + claimDelay`. Copy says "bonded, not a hard lock" plus the attester trust assumption.
+- **Live Aave rate** shown as APR "variable, not guaranteed".
+- **Relayer:** `/nimiq/staker/:address`.
+
+**Evidence:** web typecheck + build pass; 23 web tests pass (amount parsing incl. NIM→Luna, ray→%, Nimiq address vs @nimiq/core, typed-data JSON round-trip as the host signs it for LockBond / CreateMandate / Withdraw(max) / RequestLoan(arrays) / USDT meta-tx, plus the error cases). The relayer integration suite (14/14) already proves the same messages are accepted on-chain.
+
+**Gate 4 still open (device + deploy):** deposits / withdrawals inside Nimiq Pay on Polygon mainnet (≤1 USDT per action, after Maris approves the deploy); NIM SafeLock on testnet; Autosave twice + revoke on schedule. Unknown until S2: whether the staking SDK calls return a tx hash (the explorer link uses the returned value). `VITE_NIM_VALIDATOR` needs Maris's pick.

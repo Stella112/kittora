@@ -54,3 +54,17 @@ body {
 }
 
 .tabular { font-variant-numeric: tabular-nums; }
+
+@layer components {
+  .input {
+    width: 100%;
+    min-height: 48px;
+    border-radius: 14px;
+    border: 1.5px solid var(--color-line);
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    padding: 0 14px;
+    font-size: 16px; /* prevents iOS zoom */
+  }
+  .input:focus { border-color: var(--color-brand); outline: none; }
+}

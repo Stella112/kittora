@@ -42,6 +42,16 @@ export function build(cfg: Config = loadConfig()) {
     }
   })
 
+  /** Active NIM stake for an address on the configured Nimiq network (used before locking a bond). */
+  app.get('/nimiq/staker/:address', async (c) => {
+    try {
+      const s = await nimiq.activeStake(decodeURIComponent(c.req.param('address')))
+      return c.json({ ...s, rpc: cfg.NIMIQ_RPC_URL })
+    } catch (e) {
+      return c.json({ error: 'rpc_down', message: 'Nimiq network not reachable, please retry' }, 503)
+    }
+  })
+
   /** Which pockets/groups/bonds/mandates an EVM address has (ids only; read values live from chain). */
   app.get('/me/:evm', async (c) => {
     const evm = c.req.param('evm')

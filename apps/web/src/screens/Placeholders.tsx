@@ -10,6 +10,5 @@ function Soon({ title, body }: { title: string, body: string }) {
   )
 }
 
-export const Save = () => <Soon title="Save" body="Flex, Target, SafeLock, NIM SafeLock and Autosave are being connected in this build." />
 export const Groups = () => <Soon title="Groups" body="Create or join a Group Kitty, buy shares, borrow with guarantors and claim your Share-Out." />
 export const Activity = () => <Soon title="Activity" body="Every action with its Polygonscan or Nimiq explorer link and stamp status will appear here." />

@@ -18,7 +18,9 @@ export interface GroupView {
   cycleEnd: bigint
   shareOutOpen: boolean
 }
-export interface Portfolio { pockets: PocketView[], groups: GroupView[], myKittyTotal: bigint, groupTotal: bigint, nextEvent: { label: string, at: bigint } | null }
+export interface BondView { id: bigint, pocketId: bigint, nimiqAddress: `0x${string}`, unlockAt: bigint, nimLuna: bigint, groupId: bigint, status: number, assets: bigint }
+export interface MandateView { id: bigint, amountPerRun: bigint, interval: bigint, maxRuns: number, runs: number, expiry: bigint, lastRun: bigint, toGroup: boolean, revoked: boolean, destId: bigint }
+export interface Portfolio { pockets: PocketView[], groups: GroupView[], bonds: BondView[], mandates: MandateView[], myKittyTotal: bigint, groupTotal: bigint, nextEvent: { label: string, at: bigint } | null }
 
 export async function loadPortfolio(evm: Address): Promise<Portfolio> {
   const ids = await relayer.me(evm)
@@ -47,13 +49,24 @@ export async function loadPortfolio(evm: Address): Promise<Portfolio> {
     const idx = now > startAt ? (now - startAt) / interval : 0n
     return { id, shares: m[2], value, nextMeetingAt: startAt + (idx + 1n) * interval, cycleEnd: params.cycleEnd, shareOutOpen: now >= params.cycleEnd }
   }))
+  const bonds = await Promise.all(ids.bondIds.map(async (s) => {
+    const id = BigInt(s)
+    const b = await r.readContract({ address: vault, abi: vaultAbi, functionName: 'bonds', args: [id] }) as readonly [bigint, Address, `0x${string}`, bigint, bigint, bigint, `0x${string}`, number]
+    const assets = await r.readContract({ address: vault, abi: vaultAbi, functionName: 'pocketAssets', args: [b[0]] }) as bigint
+    return { id, pocketId: b[0], nimiqAddress: b[2], unlockAt: b[3], nimLuna: b[4], groupId: b[5], status: b[7], assets }
+  }))
+  const mandates = await Promise.all(ids.mandateIds.map(async (s) => {
+    const id = BigInt(s)
+    const m = await r.readContract({ address: vault, abi: vaultAbi, functionName: 'mandates', args: [id] }) as readonly [Address, bigint, bigint, number, number, bigint, bigint, boolean, boolean, bigint]
+    return { id, amountPerRun: m[1], interval: m[2], maxRuns: m[3], runs: m[4], expiry: m[5], lastRun: m[6], toGroup: m[7], revoked: m[8], destId: m[9] }
+  }))
   const myKittyTotal = pockets.filter(p => p.kind !== 3).reduce((a, p) => a + p.assets, 0n)
   const groupTotal = groups.reduce((a, g) => a + g.value, 0n)
   const upcoming = groups.flatMap(g => g.shareOutOpen ? [] : [
     { label: 'Next meeting', at: g.nextMeetingAt < g.cycleEnd ? g.nextMeetingAt : g.cycleEnd },
     { label: 'Share-Out', at: g.cycleEnd },
   ]).sort((a, b) => Number(a.at - b.at))
-  return { pockets, groups, myKittyTotal, groupTotal, nextEvent: upcoming[0] ?? null }
+  return { pockets, groups, bonds, mandates, myKittyTotal, groupTotal, nextEvent: upcoming[0] ?? null }
 }
 
 export function usePortfolio(evm: Address | null) {

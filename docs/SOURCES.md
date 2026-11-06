@@ -53,3 +53,9 @@ Nimiq Pay source = https://github.com/nimiq/nimiq-pay-app @ `2115a8d3839a2233ce5
 - `nimiqpay://miniapp?url=<url>`: `src/lib/deep-link.ts` (`case 'nimiqpay:'`, host must be `miniapp`, `url` query param).
 - `https://nimpay.app/miniapps/open/<host>[/path][?qs]`: built by `src/lib/mini-app-deeplink.ts` (`miniAppOpenDeeplink`), parsed in `deep-link.ts`.
 - Nimiq Pay refuses deeplinks to LAN/unsafe targets (`isExternalDeepLinkUrlSafe`), so they only work for the public HTTPS URL.
+
+## Phase 4 sources (checked Nov 6 2026)
+- **Aave live rate:** `IPool.getReserveData(asset)` returns `DataTypes.ReserveDataLegacy` (`aave-v3-origin src/contracts/interfaces/IPool.sol` L508, `protocol/libraries/types/DataTypes.sol`). `currentLiquidityRate` is in ray. On-chain read on Nov 6 gave 3.571e25, about 3.57% APR, and the `aTokenAddress` field matches the address book. Pool `0x794a61358D6845594F94dc1DB02A252b5b4814aD` = `AaveV3Polygon.POOL` (address book @b71495ae).
+- **Nimiq explorer link:** `https://nimiq.watch/#<hash>`, the format used by NimBooks (`mcp/src/chain.ts` `explorerTxUrl`), a reference app in the brief. Testnet host `test.nimiq.watch` responds 200; the `#<hash>` format there is assumed to match (to confirm on device).
+- **Nimiq mainnet RPC:** `https://rpc.nimiqwatch.com` (testnet `https://rpc.testnet.nimiqwatch.com`), from nimiq-pay-app `src/lib/mini-app-launcher.ts` L34.
+- **Nimiq address → bytes20** in the browser: base32 alphabet `0123456789ABCDEFGHJKLMNPQRSTUVXY`. Cross-checked against `@nimiq/core` serialization in `apps/web/src/lib/nimiqAddress.test.ts` (20 random plus 1 fixed address).

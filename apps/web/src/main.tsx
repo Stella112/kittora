@@ -10,7 +10,11 @@ import { OpenInNimiqPay } from './screens/OpenInNimiqPay.tsx'
 import { SignIn } from './screens/SignIn.tsx'
 import { Home } from './screens/Home.tsx'
 import { Disclosure } from './screens/Disclosure.tsx'
-import { Save, Groups, Activity } from './screens/Placeholders.tsx'
+import { Groups, Activity } from './screens/Placeholders.tsx'
+import { Save } from './screens/save/Save.tsx'
+import { NewPocket } from './screens/save/NewPocket.tsx'
+import { Pocket } from './screens/save/Pocket.tsx'
+import { NimLock } from './screens/save/NimLock.tsx'
 
 const router = createBrowserRouter([
   {
@@ -19,6 +23,9 @@ const router = createBrowserRouter([
       { path: '/', element: <Home /> },
       { path: '/disclosure', element: <Disclosure /> },
       { path: '/save', element: <Save /> },
+      { path: '/save/new/:kind', element: <NewPocket /> },
+      { path: '/save/pocket/:id', element: <Pocket /> },
+      { path: '/save/nim', element: <NimLock /> },
       { path: '/groups', element: <Groups /> },
       { path: '/activity', element: <Activity /> },
       { path: '*', element: <Home /> },
