@@ -156,7 +156,7 @@ describe('relayer rejections (Gate 2)', () => {
   })
 
   it('rejects gas above the cap', async () => {
-    const low = build(cfg({ GAS_CAP: '50000' }))
+    const low = build(cfg({ GAS_CAP: '50000', RELAYER_PRIVATE_KEY: ANVIL_KEYS.relayer2 }))
     const { params, signature } = await deposit(users[0], 1n, 1_000_000n)
     const res = await post(low.app, { action: 'vault.deposit', params, signature })
     expect(res.body.error).toBe('gas_cap')
@@ -164,7 +164,7 @@ describe('relayer rejections (Gate 2)', () => {
   })
 
   it('rate-limits per address per hour', async () => {
-    const lim = build(cfg({ RATE_LIMIT_PER_HOUR: '2' }))
+    const lim = build(cfg({ RATE_LIMIT_PER_HOUR: '2', RELAYER_PRIVATE_KEY: ANVIL_KEYS.relayer2 }))
     const u = users[2]
     await wait((await gaslessApprove(u, f.vault, 100_000_000n)).body.hash)
     const id = await openFlex(u, 1_000_000n)

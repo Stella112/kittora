@@ -38,7 +38,26 @@
 
 **Next:** Phase 2 (relayer, scheduler, watcher, attester).
 
-## Nov 6 2026: Phase 2 (in progress)
-**Built:** `packages/core` (generated ABIs, EIP-712 builders, Nimiq link message); `apps/relayer` (Hono): action whitelist, policy pipeline (deadline → nonce → signature → rate limit → simulate → gas cap → serialized nonce queue), `/relay`, `/status/:hash`, `/health` with low-POL alert, Autosave scheduler (idempotency key per mandate run), NIM watcher + attester (forfeits only on the explicit "No staker" reply or stake below the bond; never on an RPC error).
-**Evidence:** `pnpm --filter @kittora/relayer test` against an anvil Polygon fork with real deployed contracts. 12 of 14 pass: gasless happy path (user 0 POL, `tx.from` = relayer), and rejections for unknown action, bad params, forged, expired, replayed, foreign spender, simulation revert, gas cap and rate limit; bond link checks plus watcher forfeit emitting the Nimiq tx hash; live testnet RPC read.
-**Open:** 2 tests time out at 180 s (concurrent joins; scheduler restart). Likely the waits for receipts on the anvil fork, not yet diagnosed. Live testnet early-unstake run needs the phone (S2). Production Postgres driver not wired yet.
+## Nov 6 2026: Phase 2 (relayer, scheduler, watcher, attester)
+**Built:** `packages/core` (generated ABIs, EIP-712 builders, Nimiq link message); `apps/relayer` (Hono):
+- action whitelist and policy pipeline (deadline → nonce → signature → rate limit → simulate → gas cap)
+- serialized nonce queue, resynced from the chain's pending count before every send, with one retry on a nonce conflict
+- `/relay`, `/status/:hash`, and `/health` with a low-POL alert
+- Autosave scheduler (idempotency key per mandate run)
+- NIM watcher + attester: forfeits only on the explicit "No staker" reply or stake below the bond, never on an RPC error
+
+**Evidence:** `pnpm --filter @kittora/relayer test` against an anvil Polygon fork with the real contracts deployed by `Deploy.s.sol`: **14/14 pass, two consecutive full runs**.
+- Gasless happy path: user holds 0 POL; `tx.from` = relayer.
+- Rejections, one test each: unknown action, bad params, forged signature, expired, replayed, foreign spender, simulation revert, gas cap, rate limit.
+- 5 concurrent relays get distinct nonces and all confirm.
+- Scheduler: a run is never re-sent while pending or after a restart; it runs again after the interval; revoke stops it.
+- Bond: link checks (bad link, stake missing), then the watcher forfeit emits the Nimiq tx hash, and there is no second attempt. Uses a labelled TEST MOCK Nimiq RPC.
+- Live Nimiq testnet RPC read of a real staker.
+
+**Fixed while testing:** two relayer instances sharing one key could collide on nonces. The sender now resyncs from the chain before each send.
+
+**Open:**
+- Live testnet early-unstake run needs the phone (after S2).
+- Production Postgres driver not wired yet (local uses node:sqlite via Drizzle sqlite-proxy).
+
+**Next:** Phase 3 (mini app shell).

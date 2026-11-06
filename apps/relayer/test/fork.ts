@@ -9,6 +9,7 @@ export const ANVIL_KEYS = {
   deployer: '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80' as Hex, // anvil #0
   attester: '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' as Hex, // anvil #1
   relayer: '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a' as Hex, // anvil #2
+  relayer2: '0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6' as Hex, // anvil #3
 }
 export const USDT: Address = '0xc2132D05D31c914a87C6611C10748AEb04B58e8F'
 const AUSDT_WHALE: Address = '0x6ab707Aca953eDAeFBc4fD23bA73294241490620' // aUSDT holds the underlying

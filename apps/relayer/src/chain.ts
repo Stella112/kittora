@@ -47,17 +47,26 @@ export class TxSender {
       }
       const gas = await this.pub.estimateContractGas({ account: this.account, address, abi, functionName, args })
       if (gas > this.gasCap) throw new RelayError('gas_cap', `gas ${gas} above cap ${this.gasCap}`)
-      if (this.nonce === null) this.nonce = await this.pub.getTransactionCount({ address: this.account.address, blockTag: 'pending' })
-      const nonce = this.nonce
-      try {
-        const hash = await this.wallet.writeContract({ address, abi, functionName, args, nonce, gas: (gas * 12n) / 10n, account: this.account, chain: this.wallet.chain })
-        this.nonce = nonce + 1
-        this.log.info({ hash, functionName, nonce }, 'tx sent')
-        return hash
-      } catch (e) {
-        this.nonce = null // resync next time
-        this.log.error({ err: revertReason(e), functionName }, 'send failed')
-        throw new RelayError('send_failed', revertReason(e), 502)
+      for (let attempt = 0; ; attempt++) {
+        // Never trust a cached nonce below the chain's pending count (another process may have used the key).
+        const pending = await this.pub.getTransactionCount({ address: this.account.address, blockTag: 'pending' })
+        if (this.nonce === null || this.nonce < pending) this.nonce = pending
+        const nonce = this.nonce
+        try {
+          const hash = await this.wallet.writeContract({ address, abi, functionName, args, nonce, gas: (gas * 12n) / 10n, account: this.account, chain: this.wallet.chain })
+          this.nonce = nonce + 1
+          this.log.info({ hash, functionName, nonce }, 'tx sent')
+          return hash
+        } catch (e) {
+          this.nonce = null
+          const msg = revertReason(e)
+          if (attempt === 0 && /nonce|underpriced|already known/i.test(msg)) {
+            this.log.warn({ err: msg, functionName }, 'nonce conflict, resyncing and retrying once')
+            continue
+          }
+          this.log.error({ err: msg, functionName }, 'send failed')
+          throw new RelayError('send_failed', msg, 502)
+        }
       }
     }
     const p = this.chainTail.then(run, run)
