@@ -9,6 +9,9 @@ import { NimiqRpc } from './nimiq.ts'
 import { handleRelay, type Deps, type RelayRequest } from './policy.ts'
 import { schedulerTick } from './scheduler.ts'
 import { watcherTick } from './watcher.ts'
+import { Auth } from './auth.ts'
+import { Indexer } from './indexer.ts'
+import { randomBytes } from 'node:crypto'
 
 export function build(cfg: Config = loadConfig()) {
   const log = pino({ level: cfg.LOG_LEVEL, redact: ['*.privateKey', '*.RELAYER_PRIVATE_KEY', '*.ATTESTER_PRIVATE_KEY'] })
@@ -23,8 +26,34 @@ export function build(cfg: Config = loadConfig()) {
   const addresses = { vault: cfg.VAULT_ADDRESS, group: cfg.GROUP_KITTY_ADDRESS, usdt: cfg.USDT_ADDRESS }
   const deps: Deps = { pub, sender, db, nimiq, chainId: cfg.CHAIN_ID, addresses, rateLimitPerHour: cfg.RATE_LIMIT_PER_HOUR }
 
+  if (!cfg.SESSION_SECRET) log.warn('SESSION_SECRET not set: using a random one (sessions reset on restart)')
+  const auth = new Auth(cfg.SESSION_SECRET ?? randomBytes(32).toString('hex'))
+  const indexer = new Indexer(pub, addresses.vault, addresses.group, cfg.DEPLOY_BLOCK)
+
   const app = new Hono()
   app.use('*', cors())
+
+  app.get('/auth/challenge', c => c.json(auth.challenge()))
+  app.post('/auth/verify', async (c) => {
+    try {
+      return c.json(auth.verify(await c.req.json()))
+    } catch (e) {
+      return c.json({ error: 'auth_failed', message: (e as Error).message }, 401)
+    }
+  })
+
+  /** Which pockets/groups/bonds/mandates an EVM address has (ids only; read values live from chain). */
+  app.get('/me/:evm', async (c) => {
+    const evm = c.req.param('evm')
+    if (!/^0x[0-9a-fA-F]{40}$/.test(evm)) return c.json({ error: 'bad_params', message: 'bad address' }, 400)
+    try {
+      const r = await indexer.of(evm)
+      return c.json(JSON.parse(JSON.stringify(r, (_k, v) => (typeof v === 'bigint' ? v.toString() : v))))
+    } catch (e) {
+      log.error({ err: String(e) }, 'indexer error')
+      return c.json({ error: 'rpc_down', message: 'could not read the chain, please retry' }, 503)
+    }
+  })
 
   app.post('/relay', async (c) => {
     let body: RelayRequest
@@ -93,5 +122,5 @@ export function build(cfg: Config = loadConfig()) {
     }
   }
 
-  return { app, log, deps, sender, attester, startLoops, stop: () => { timers.forEach(clearInterval); close() } }
+  return { app, log, deps, auth, indexer, sender, attester, startLoops, stop: () => { timers.forEach(clearInterval); close() } }
 }

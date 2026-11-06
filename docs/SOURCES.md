@@ -48,3 +48,8 @@ Nimiq Pay source = https://github.com/nimiq/nimiq-pay-app @ `2115a8d3839a2233ce5
 - Method signatures: https://github.com/nimiq/core-rs-albatross `rpc-interface/src/blockchain.rs`: `getStakerByAddress(address)`, `getTransactionsByAddress(address, max, startAt)` (newest first). `Staker.balance` is the **active** balance (`types.rs`, `from_staker`: `balance: staker.active_balance`).
 - Testnet endpoint `https://rpc.testnet.nimiqwatch.com` (used by Nimiq Pay's example dApp `mini-app-sdk/dapp/src/composables/useNimiqMiniApp.ts`). For a non-staker it returns error `-32603` with data `"No staker with address: …"`; `getStakersByValidatorAddress` returns "Method not allowed".
 - Mainnet Nimiq RPC endpoint for the watcher: still to choose before Gate 6.
+
+## Deeplinks (checked Nov 6 2026, nimiq-pay-app @52097644)
+- `nimiqpay://miniapp?url=<url>`: `src/lib/deep-link.ts` (`case 'nimiqpay:'`, host must be `miniapp`, `url` query param).
+- `https://nimpay.app/miniapps/open/<host>[/path][?qs]`: built by `src/lib/mini-app-deeplink.ts` (`miniAppOpenDeeplink`), parsed in `deep-link.ts`.
+- Nimiq Pay refuses deeplinks to LAN/unsafe targets (`isExternalDeepLinkUrlSafe`), so they only work for the public HTTPS URL.

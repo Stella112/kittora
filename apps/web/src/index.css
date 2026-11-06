@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+/* Warm, PiggyVest-clear palette. Tokens flip for dark mode. */
+@theme {
+  --color-brand: #f28c28;
+  --color-brand-strong: #d9701a;
+  --color-brand-soft: #fff1e3;
+  --color-ink: #2b1d14;
+  --color-muted: #7a6656;
+  --color-surface: #ffffff;
+  --color-canvas: #fff8f1;
+  --color-line: #f1e2d3;
+  --color-good: #1f8a4c;
+  --color-good-soft: #e3f5ea;
+  --color-warn: #b45309;
+  --color-warn-soft: #fef3c7;
+  --color-bad: #c0392b;
+  --color-bad-soft: #fdecea;
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-brand: #f59e4a;
+    --color-brand-strong: #f7b26f;
+    --color-brand-soft: #3a2614;
+    --color-ink: #fbefe4;
+    --color-muted: #c4ad99;
+    --color-surface: #22180f;
+    --color-canvas: #170f09;
+    --color-line: #3a2a1d;
+    --color-good: #4ade80;
+    --color-good-soft: #12301f;
+    --color-warn: #fbbf24;
+    --color-warn-soft: #3a2b0a;
+    --color-bad: #f87171;
+    --color-bad-soft: #3b1513;
+  }
+}
+
+html, body, #root { min-height: 100%; }
+body {
+  margin: 0;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible { outline: 3px solid var(--color-brand); outline-offset: 2px; border-radius: 10px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+.tabular { font-variant-numeric: tabular-nums; }

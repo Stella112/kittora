@@ -30,6 +30,8 @@ const schema = z.object({
   SCHEDULER_INTERVAL_MS: z.coerce.number().default(60_000),
   WATCHER_INTERVAL_MS: z.coerce.number().default(60_000),
   LOG_LEVEL: z.string().default('info'),
+  SESSION_SECRET: z.string().min(16).optional(),
+  DEPLOY_BLOCK: z.coerce.bigint().default(0n),
 })
 
 export type Config = z.infer<typeof schema>

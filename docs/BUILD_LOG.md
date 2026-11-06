@@ -61,3 +61,22 @@
 - Production Postgres driver not wired yet (local uses node:sqlite via Drizzle sqlite-proxy).
 
 **Next:** Phase 3 (mini app shell).
+
+## Nov 6 2026: Phase 3 (mini app shell)
+**Built:** `apps/web` (Vite 7, React 19, React Router 7, TanStack Query 5, Tailwind 4):
+- host detection, then an "Open in Nimiq Pay" screen with both verified deeplinks when outside Nimiq Pay
+- Nimiq sign-in (listAccounts + sign; relayer `/auth/challenge` + `/auth/verify`, HMAC session token)
+- Polygon connect through the host provider (never passes rpcUrl)
+- one error vocabulary covering every §4.1 item 5 case, each with a retry path
+- disclosure screen gating the first deposit (variable yield, contract risk, pilot caps, NIM bond rule with attester trust, default rule, relay)
+- Home with My Kitty total, group share, next meeting / Share-Out countdown, and Save + Join buttons; bottom nav; TESTNET badge from `getHostNetwork()`
+- Relayer: `/me/:evm` read index (event scan from `DEPLOY_BLOCK` in 9k-block chunks; values always read live)
+
+**Evidence:** typecheck clean; `vite build` passes (main chunk 210 KB gzipped); web tests 14/14 (error classification); relayer auth tests 2/2 (valid, single-use, wrong address, tampered, expired, forged token). Browser preview at 360 px: outside-Nimiq-Pay screen and sign-in render with no errors.
+
+**Open (needs device):**
+- <3 s open on a mid-range phone.
+- "Sign-in in one approval": `listAccounts` may itself prompt in Nimiq Pay, which would make it two. To confirm in S1.
+- Home with real data needs deployed contracts.
+
+Save/Groups/Activity tabs are labelled shells until Phases 4–5.
