@@ -22,7 +22,7 @@ const schema = z.object({
   VAULT_ADDRESS: addr,
   GROUP_KITTY_ADDRESS: addr,
   USDT_ADDRESS: addr.default('0xc2132D05D31c914a87C6611C10748AEb04B58e8F'),
-  NIMIQ_RPC_URL: z.string().url().default('https://rpc.testnet.nimiqwatch.com'),
+  NIMIQ_RPC_URL: z.string().url().default('https://rpc.nimiqwatch.com'), // mainnet (nimiq-pay-app mini-app-launcher.ts),
   DB_PATH: z.string().default('relayer.db'),
   GAS_CAP: z.coerce.bigint().default(1_500_000n),
   RATE_LIMIT_PER_HOUR: z.coerce.number().default(60),
