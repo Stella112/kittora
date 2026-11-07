@@ -245,3 +245,17 @@ Checked first (Addendum §5): the first deployment held **0 groups, 0 pockets, 0
 - Updated: local relayer `.env`, `apps/web/.env.local`, `deploy/vps/web.Dockerfile`, `deploy/vps/relayer.env.example`, `submission/SUBMISSION.md`.
 
 **Not yet done:** kittora.xyz still serves the old build and points at the old contracts. Shipping needs `a1` merged to `main`, the server's `relayer.env` updated (addresses + `DEPLOY_BLOCK=96904101`) and the images rebuilt.
+
+## Nov 7 2026: A1 shipped to https://kittora.xyz (approved by Maris: "Yes, ship it")
+- `a1` fast-forwarded into `main` (7221658) and pushed.
+- Server: `relayer.env` backed up to `relayer.env.bak-pre-a1`; only `VAULT_ADDRESS`, `GROUP_KITTY_ADDRESS`, `DEPLOY_BLOCK=96904101` changed (secrets not read). `git pull`, then rebuilt the `kittora-web` and `kittora-relayer` containers. nginx untouched.
+
+**Evidence (from the internet):**
+- `https://kittora.xyz` 200; its JS bundle contains the new vault address and not the old one.
+- `api.kittora.xyz/health` ok, relayer 2.60 POL, attester 1 POL.
+- Index scanning from the new deploy block (96,904,4xx); `/group/1/feed` empty (no groups yet).
+- `POST /stamps` live (rejects bad input).
+- 0 error logs since restart.
+- keepflow.site still 200.
+
+**Next:** phone gates inside Nimiq Pay (A1.1–A1.5 + stamps + Gate 4/5 flows); top up the relayer wallet to ~5 POL before the pilot.
