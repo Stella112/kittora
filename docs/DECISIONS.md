@@ -56,3 +56,15 @@ Loans count at par (principal) until repaid or written off; unpaid interest is n
 
 ## Nov 6 2026: NIM SafeLock validator (Maris)
 **Garuda Pool**, `NQ15 HNAH YRVH DFVM YHAG BSXG 0QHK KA0Q XDR7`. Chosen from the validators API (`validators-api-mainnet.nuxt.dev/api/v1/validators`) ranked by score: the top entry (Nimiq Surf) was skipped because its payout type is `none` (stakers receive no rewards) and its data was stale. Garuda: score 1.000, 5% fee, restake payouts, 255 stakers, 2.8% of stake.
+
+## Nov 6–7 2026: Addendum A1 (Group Accounts), approved by Maris Nov 6
+Scope added by `KITTORA_BUILD_PROMPT` Addendum A1 (A1.1–A1.5).
+- **`maxSocialPayout`** is a creation parameter. **0 means "no cap beyond the social fund balance"**, which is the addendum's default for groups that existed before A1. No groups existed on the first deployment (mainnet `groupCount() = 0`, checked Nov 7), so every group on the A1 deployment chooses its own cap at creation.
+- **Payout expiry:** `PAYOUT_TTL = 7 days`, capped at `cycleEnd`. In pilot mode (short cycles) a proposal therefore expires with the cycle, matching "shown shorter, matching the pilot cycle".
+- **Treasurers:** 0–2 (`MAX_TREASURERS`). The Admin can never also be a Treasurer. With no Treasurer, the Admin's approval counts instead.
+- **Approvals that count:** members other than the proposer and the recipient. Needs `approvalsRequired` of them, at least one from a Treasurer (or the Admin when there is none).
+- **Grants replaced:** the earlier "social fund grant" flow is removed and merged into social fund payments (addendum A1.5 says to replace, not duplicate).
+- **A1.3 enforced on-chain:** one contribution per member per meeting window (`AlreadyContributed`), so an Autosave run in a window already paid by hand reverts instead of doubling. The scheduler records the window as "skipped".
+- **Covers:** `coverId < 8`, an index into the app's fixed preset list; no uploads. Name 1–32 bytes, purpose 0–80, reason 1–80, all shown as plain text.
+- **Contract size:** the A1 GroupKitty is 23,657 bytes (limit 24,576). Further contract features need a size cut first.
+- **Redeploy:** A1.1, A1.4 and A1.5 ship as one batched redeploy of both contracts (`setGroupKitty` is one-shot). Safe because the first deployment holds no groups, pockets or funds.

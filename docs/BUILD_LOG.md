@@ -180,3 +180,35 @@ Deployed on the team's existing AWS Lightsail VPS (56.125.248.192, Ubuntu 24.04)
 **Evidence (from the internet):** `https://kittora.xyz` 200 with a valid certificate; `/groups/3` 200 (SPA fallback); `http://` and `www.` → 308 to `https://kittora.xyz`; `https://api.kittora.xyz/health` `ok:true`, relayer `0xb6F9…e962` with 1.96 POL, attester `0xa592…8a12` with 1 POL, scheduler and watcher ticking; `/auth/challenge` 200; index caught up to block 96,849,880; unknown relay actions rejected.
 
 **Open:** the phone smoke test inside Nimiq Pay (`https://nimpay.app/miniapps/open/kittora.xyz`); `VITE_NIM_VALIDATOR` (Maris's pick) then a rebuild of the web image.
+
+## Nov 7 2026: Addendum A1 (Group Accounts), built and tested; redeploy pending
+Code is on branch `a1` (commit d7d6900); `main` and kittora.xyz still run the pre-A1 contracts.
+
+**A1.1 Group profile:** name / purpose / cover set at creation, editable by the Admin; `GroupProfileUpdated`; header and list show the cover and name as plain text.
+- Gate (Foundry): `test_A1_1_createWithProfile`, `_adminEditsOthersCannot`, `_lengthAndCoverLimits`, `_relayedProfileSignature` pass.
+- Open: phone check and the Nimiq stamp (see below).
+
+**A1.2 Activity feed v2:** relayer `/group/:id/feed` + `/group/:id` (initiator, approvers, relay tracking); feed with All / Money in / Loans / Approvals filters; "needs you" approvals pinned with Approve; empty state.
+- Evidence: web `groupFeed.test.ts` passes.
+- Open: the "Stamped on Nimiq" status (stamps not built); phone check; relayer restart rebuild on the live server.
+
+**A1.3 Recurring group contributions:** "Contribute every meeting" mandate; one attempt per mandate per window (`mandate_windows`); contract rejects a second contribution in a window; "Missed contribution" notice; Members tab.
+- Gate (Foundry): `test_A1_3_twoConsecutiveWindows`, `_manualPurchaseSkipsWindowNoDoubleBuy`, `_secondRunInSameWindowReverts`, `_insufficientBalanceRunReverts` pass.
+
+**A1.4 Roles:** Admin (transferable), 0–2 Treasurers, Members; remove only members with no shares, loans or pledges; `RoleChanged`.
+- Gate (Foundry): `test_A1_4_onlyAdminAssignsRoles`, `_transferAdmin`, `_removeOnlyEmptyMembers`, `_rolesNeverMoveMoney`, plus fuzz `invariant_rolesNeverMoveMoney` and `invariant_roleBookkeeping`, pass.
+
+**A1.5 Social fund payments:** propose / approve / execute with cap, member-only recipient, 7-day expiry (capped at cycle end); replaces grants.
+- Gate (Foundry): `test_A1_5_capAndRecipientRules`, `_proposerAndRecipientApprovalsDontCount`, `_needsTreasurerOrAdminWhenNoTreasurer`, `_expiredCannotApproveOrExecute`, `_expiryNeverPassesCycleEnd`, `_mainPoolUntouched`, `_relayedProposeSignature` pass.
+
+**Regression:** full suite green (PocketVault 25, GroupKitty 21 incl. full loan → repay → Share-Out cycle, GroupKittyA1 19, invariants incl. role fuzz, S6); web 37/37; relayer typed + auth 5/5.
+
+**Slither 0.11.6** on the A1 GroupKitty: 19 GroupKitty findings in three known categories (12 block.timestamp, 6 zero-initialised locals, 1 arbitrary-from in `repay`), all triaged as by-design in RISKS.md. No new category.
+
+**Open:**
+1. **Nimiq stamps are not implemented anywhere** (main brief §4.1 item 3 and A1). This blocks the "Stamped on Nimiq" status and the phone gates.
+2. Batched redeploy of both contracts (needs Maris's approval). Mainnet check Nov 7: `groupCount() = 0`, `pocketCount() = 0`, `totalAssets() = 0`.
+3. Phone gates inside Nimiq Pay.
+4. README (does not exist yet; its trust section must mention roles and payouts).
+
+**Next:** redeploy simulation, then Nimiq stamps.
