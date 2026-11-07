@@ -113,6 +113,7 @@ function Form({ evm }: { evm: Address }) {
     return (
       <TxFlow
         owner={evm}
+        stampGroup={null}
         summary={{
           what: `Create ${draft.name} (you join as the first member, as Admin)`,
           chain: 'Polygon',

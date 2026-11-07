@@ -3,7 +3,8 @@ import { useState } from 'react'
 import type { Address } from 'viem'
 import { short, same } from '../../lib/group.ts'
 import { applyFilter, type FeedFilter, type FeedRowV2, type FeedStatus } from '../../lib/groupFeed.ts'
-import { polygonscanTx } from '../../lib/chainActions.ts'
+import { polygonscanTx, nimiqTx } from '../../lib/chainActions.ts'
+import { hostNetwork } from '../../lib/nimiq.ts'
 import { Button, Card, Spinner, usdt } from '../../components/ui.tsx'
 
 const FILTERS: [FeedFilter, string][] = [['all', 'All'], ['money', 'Money in'], ['loans', 'Loans'], ['approvals', 'Approvals']]
@@ -13,6 +14,7 @@ const STATUS_STYLE: Record<FeedStatus, string> = {
   Approved: 'bg-brand-soft text-brand-strong',
   Submitted: 'bg-warn-soft text-warn',
   Confirmed: 'bg-good-soft text-good',
+  'Stamped on Nimiq': 'bg-good-soft text-good',
   Failed: 'bg-bad-soft text-bad',
   Expired: 'bg-canvas text-muted',
   Skipped: 'bg-canvas text-muted',
@@ -69,7 +71,10 @@ export function GroupFeedView({ rows, evm, loading, onStart }: { rows: FeedRowV2
                   {r.amount !== null && <> · <b className="tabular text-ink">{usdt(r.amount)} USDT</b></>}
                   {r.ts ? ` · ${new Date(r.ts * 1000).toLocaleString()}` : ''}
                 </span>
-                {r.hash && <a className="font-semibold text-brand-strong underline" href={polygonscanTx(r.hash)} target="_blank" rel="noreferrer">Polygonscan</a>}
+                <span className="flex gap-3">
+                  {r.hash && <a className="font-semibold text-brand-strong underline" href={polygonscanTx(r.hash)} target="_blank" rel="noreferrer">Polygonscan</a>}
+                  {r.stamp && <a className="font-semibold text-brand-strong underline" href={nimiqTx(r.stamp, hostNetwork() === 'testnet')} target="_blank" rel="noreferrer">Nimiq stamp</a>}
+                </span>
               </div>
             </Card>
           </li>

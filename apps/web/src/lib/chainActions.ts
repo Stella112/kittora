@@ -5,6 +5,7 @@ import { config } from '../config.ts'
 import { reader, signTypedJson } from './evm.ts'
 import { relayer } from './relayer.ts'
 import { makeError } from './errors.ts'
+import { groupRelays } from './stamp.ts'
 
 export const usdtAbi = parseAbi([
   'function getNonce(address) view returns (uint256)',
@@ -58,6 +59,7 @@ export async function signAndRelayVault(action: string, primary: VaultPrimary, o
 export async function signAndRelayGroup(action: string, primary: GroupPrimary, signer: Address, message: Record<string, unknown>): Promise<Hex> {
   const sig = await signTypedJson(signer, toSignTypedDataV4(groupTyped(GROUP(), primary, message, config.chainId)))
   const { hash } = await relayer.relay({ action, params: message, signature: sig })
+  groupRelays.set(hash.toLowerCase(), action)
   return hash
 }
 
@@ -65,6 +67,7 @@ export async function signAndRelayGroup(action: string, primary: GroupPrimary, s
 export async function relayOpen(action: 'group.disburse' | 'group.markDefault' | 'group.executeSocialPayout', id: bigint): Promise<Hex> {
   const params = action === 'group.executeSocialPayout' ? { payoutId: id } : { loanId: id }
   const { hash } = await relayer.relay({ action, params })
+  groupRelays.set(hash.toLowerCase(), action)
   return hash
 }
 

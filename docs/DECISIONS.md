@@ -68,3 +68,10 @@ Scope added by `KITTORA_BUILD_PROMPT` Addendum A1 (A1.1–A1.5).
 - **Covers:** `coverId < 8`, an index into the app's fixed preset list; no uploads. Name 1–32 bytes, purpose 0–80, reason 1–80, all shown as plain text.
 - **Contract size:** the A1 GroupKitty is 23,657 bytes (limit 24,576). Further contract features need a size cut first.
 - **Redeploy:** A1.1, A1.4 and A1.5 ship as one batched redeploy of both contracts (`setGroupKitty` is one-shot). Safe because the first deployment holds no groups, pockets or funds.
+
+## Nov 7 2026: Nimiq stamp design
+- **Memo:** `KTR1:<2-letter event code>:<groupId>:<Polygon tx hash, base64url, 43 chars>`, at most 64 bytes (the host limit). Codes are in `packages/core/src/stamp.ts`.
+- **Sent by** the member who did the action, right after the Polygon tx confirms: 1 Luna to their own Nimiq address with the memo. One extra Nimiq Pay approval, **optional**: declining never marks the group action failed.
+- **Proof:** Nimiq Pay sends from the user's HTLC, so the sender is not used as proof. The relayer `/stamps` accepts a stamp only if the Nimiq tx is in a block and executed, its memo names exactly this Polygon tx, and that Polygon tx succeeded with a GroupKitty/PocketVault log. The first verified stamp per Polygon tx wins.
+- **Feed:** a confirmed row becomes "Stamped on Nimiq" (with the Nimiq explorer link) only after verification; open requests are never upgraded.
+- Permissionless actions (disburse, default, execute payout) are stamped by whoever triggered them in the app. Autosave runs (sent by the scheduler) are not stamped by a user. They show as confirmed; a scheduler-side stamp would need a Kittora Nimiq key (not in scope).

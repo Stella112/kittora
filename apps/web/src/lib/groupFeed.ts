@@ -7,7 +7,7 @@ import type { GroupFeedRow } from './relayer.ts'
 export type FeedKind =
   | 'contribution' | 'mandate-run' | 'social' | 'loan-request' | 'approval' | 'disbursement' | 'repayment' | 'default'
   | 'payout-proposal' | 'payout-executed' | 'share-out' | 'profile' | 'role' | 'member' | 'mandate'
-export type FeedStatus = 'Pending approval' | 'Approved' | 'Submitted' | 'Confirmed' | 'Failed' | 'Expired' | 'Skipped'
+export type FeedStatus = 'Pending approval' | 'Approved' | 'Submitted' | 'Confirmed' | 'Stamped on Nimiq' | 'Failed' | 'Expired' | 'Skipped'
 export type FeedFilter = 'all' | 'money' | 'loans' | 'approvals'
 
 export interface FeedRowV2 {
@@ -20,6 +20,8 @@ export interface FeedRowV2 {
   approvals?: { have: number, need: number, who: string[], note?: string }
   status: FeedStatus
   hash?: string
+  /** Nimiq stamp tx hash, set only after the relayer verified it (A1.2 status "Stamped on Nimiq"). */
+  stamp?: string
   ts: number | null
   tags: FeedFilter[]
 }
@@ -164,6 +166,12 @@ export function buildGroupFeed(items: GroupFeedRow[], g: G, approvers: { loans: 
     })
   }
 
+  // A verified Nimiq stamp upgrades a confirmed chain row (status never comes from optimistic UI state).
+  const stampOf = new Map(items.filter(i => i.stamp).map(i => [i.hash.toLowerCase(), i.stamp!]))
+  for (const r of rows) {
+    const st = r.hash ? stampOf.get(r.hash.toLowerCase()) : undefined
+    if (st && r.status === 'Confirmed') { r.status = 'Stamped on Nimiq'; r.stamp = st }
+  }
   return rows.sort((x, y) => (y.ts ?? Number.MAX_SAFE_INTEGER) - (x.ts ?? Number.MAX_SAFE_INTEGER))
 }
 

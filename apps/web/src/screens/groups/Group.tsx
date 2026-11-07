@@ -60,7 +60,7 @@ function GroupBody({ evm }: { evm: Address }) {
   if (q.error) return <ErrorPanel error={classify(q.error)} onRetry={() => q.refetch()} />
   const g = q.data
   if (!g) return <ErrorPanel error={makeError('blocked', undefined, `Group #${id} does not exist yet. Check the number or the invite link.`)} />
-  if (flow) return <TxFlow owner={evm} summary={flow.summary} steps={flow.steps} onDone={done} onCancel={() => setFlow(null)} />
+  if (flow) return <TxFlow owner={evm} summary={flow.summary} steps={flow.steps} onDone={done} onCancel={() => setFlow(null)} stampGroup={g.id} />
 
   const back = <Link to="/groups" className="text-sm font-semibold text-brand-strong">← Groups</Link>
   if (!g.me) return <>{back}<JoinCard evm={evm} g={g} start={setFlow} /></>

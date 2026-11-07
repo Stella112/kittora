@@ -114,3 +114,21 @@ describe('pinned: what needs me', () => {
     expect(pendingForMe({ ...ready, shareOutStarted: true }, B).map(p => p.action)).toEqual(['payout'])
   })
 })
+
+describe('Nimiq stamp status', () => {
+  it('upgrades a confirmed row to "Stamped on Nimiq" only when the relayer attached a verified stamp', () => {
+    const stampedRow = { ...row('SharesBought', { member: A, shares: '5', social: '200000' }, 6, A), stamp: 'ef'.repeat(32) }
+    const plain = row('SharesBought', { member: D, shares: '1', social: '200000' }, 7, D)
+    const feed = buildGroupFeed([stampedRow, plain], g())
+    const s = feed.find(r => r.hash === h(6))!
+    const p2 = feed.find(r => r.hash === h(7))!
+    expect(s.status).toBe('Stamped on Nimiq')
+    expect(s.stamp).toBe('ef'.repeat(32))
+    expect(p2.status).toBe('Confirmed')
+    expect(p2.stamp).toBeUndefined()
+  })
+  it('never upgrades an open request (pending approval stays pending)', () => {
+    const req = { ...row('LoanRequested', { loanId: '1', principal: '8000000' }, 8, B), stamp: 'ef'.repeat(32) }
+    expect(buildGroupFeed([req], g()).find(r => r.hash === h(8))!.status).toBe('Pending approval')
+  })
+})

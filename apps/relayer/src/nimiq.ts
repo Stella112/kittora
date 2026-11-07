@@ -55,6 +55,16 @@ export class NimiqRpc {
     }
   }
 
+  /** One transaction by hash (getTransactionByHash). recipientData is hex; for a basic tx it carries the message. */
+  async transaction(hash: string): Promise<{ hash: string, from: string, to: string, value: number, confirmations: number, executionResult: boolean, recipientData: string } | null> {
+    try {
+      return await this.call('getTransactionByHash', [hash.replace(/^0x/, '')])
+    } catch (e) {
+      if ((e as { rpcError?: unknown }).rpcError !== undefined) return null
+      throw e
+    }
+  }
+
   /** Latest transaction hashes touching the address (newest first). */
   async latestTxs(address: string, max = 10): Promise<{ hash: string, blockNumber: number, recipientData: string, senderData: string, to: string, from: string }[]> {
     return this.call('getTransactionsByAddress', [address, max, null])

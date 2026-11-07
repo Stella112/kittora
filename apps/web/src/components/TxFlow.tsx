@@ -6,6 +6,7 @@ import { classify, type AppError } from '../lib/errors.ts'
 import { polygonscanTx, nimiqTx, waitConfirmed } from '../lib/chainActions.ts'
 import { hostNetwork } from '../lib/nimiq.ts'
 import { logActivity } from '../lib/activity.ts'
+import { groupRelays, isStampable, stampGroupAction } from '../lib/stamp.ts'
 
 export interface TxStep {
   label: string
@@ -28,16 +29,21 @@ export interface Summary {
 
 type Phase = { k: 'review' } | { k: 'running', i: number, hash?: string } | { k: 'done', hashes: { chain: string, hash: string }[] } | { k: 'failed', i: number, error: AppError, hash?: string }
 
-export function TxFlow({ summary, steps, onDone, onCancel, owner, doneText = 'Done' }: {
+export function TxFlow({ summary, steps, onDone, onCancel, owner, doneText = 'Done', stampGroup }: {
   summary: Summary
   steps: TxStep[]
   onDone: () => void
   onCancel: () => void
   owner: string
   doneText?: string
+  /** Group actions: stamp each confirmed one on Nimiq. bigint = group id; null = read it from the receipt (new group). */
+  stampGroup?: bigint | null
 }) {
   const [phase, setPhase] = useState<Phase>({ k: 'review' })
   const [hashes, setHashes] = useState<{ chain: string, hash: string }[]>([])
+  const [notes, setNotes] = useState<string[]>([])
+  const [stamping, setStamping] = useState(false)
+  const stamps = stampGroup !== undefined
   const testnet = hostNetwork() === 'testnet'
   const link = (chain: string, h: string) => (chain === 'nimiq' ? nimiqTx(h, testnet) : polygonscanTx(h))
 
@@ -57,6 +63,24 @@ export function TxFlow({ summary, steps, onDone, onCancel, owner, doneText = 'Do
         logActivity(owner, { label: s.label, chain: s.chain, hash, status: 'confirmed' })
         done.push({ chain: s.chain, hash })
         setHashes([...done])
+        const action = groupRelays.get(hash.toLowerCase())
+        if (stamps && s.chain === 'polygon' && isStampable(action)) {
+          // Optional receipt on Nimiq: never turns a confirmed group action into a failure.
+          setStamping(true)
+          try {
+            const n = await stampGroupAction(action!, hash as Hex, stampGroup ?? null)
+            logActivity(owner, { label: `Nimiq stamp: ${s.label}`, chain: 'nimiq', hash: n, status: 'confirmed' })
+            done.push({ chain: 'nimiq', hash: n })
+            setHashes([...done])
+          } catch (e) {
+            const err = classify(e)
+            setNotes(x => [...x, err.kind === 'rejected'
+              ? 'You skipped the Nimiq stamp. Your action is confirmed on Polygon.'
+              : `Nimiq stamp not confirmed yet (${err.title.toLowerCase()}). Your action is confirmed on Polygon.`])
+          } finally {
+            setStamping(false)
+          }
+        }
       } catch (e) {
         const error = classify(e)
         if (hash && error.kind !== 'pending') logActivity(owner, { label: s.label, chain: s.chain, hash, status: 'failed' })
@@ -84,6 +108,7 @@ export function TxFlow({ summary, steps, onDone, onCancel, owner, doneText = 'Do
             <ol className="mt-1 list-decimal pl-5">{steps.map(s => <li key={s.label}>{s.label}</li>)}</ol>
           </div>
         )}
+        {stamps && <p className="text-sm text-muted">Afterwards Nimiq Pay asks once more to stamp a public receipt on Nimiq (1 Luna to yourself). You can skip it.</p>}
         <Button onClick={() => start(0)}>{steps.some(s => s.signs !== false) ? 'Sign in Nimiq Pay' : 'Confirm (nothing to sign)'}</Button>
         <Button variant="ghost" onClick={onCancel}>Cancel</Button>
       </Card>
@@ -93,7 +118,7 @@ export function TxFlow({ summary, steps, onDone, onCancel, owner, doneText = 'Do
   if (phase.k === 'running') {
     return (
       <Card className="space-y-3">
-        <Spinner label={phase.hash ? `Confirming: ${steps[phase.i].label}` : steps[phase.i].signs === false ? `Sending: ${steps[phase.i].label}` : `Waiting for your signature: ${steps[phase.i].label}`} />
+        <Spinner label={stamping ? 'Stamping a receipt on Nimiq…' : phase.hash ? `Confirming: ${steps[phase.i].label}` : steps[phase.i].signs === false ? `Sending: ${steps[phase.i].label}` : `Waiting for your signature: ${steps[phase.i].label}`} />
         {phase.hash && <a className="block text-sm font-semibold text-brand-strong underline" href={link(steps[phase.i].chain, phase.hash)} target="_blank" rel="noreferrer">Pending: view on explorer</a>}
         <p className="text-sm text-muted">Step {phase.i + 1} of {steps.length}. Keep this screen open.</p>
       </Card>
@@ -118,6 +143,7 @@ export function TxFlow({ summary, steps, onDone, onCancel, owner, doneText = 'Do
   return (
     <Card className="space-y-3">
       <p className="text-xl font-bold text-good">Confirmed</p>
+      {notes.map(n => <p key={n} className="text-sm text-muted">{n}</p>)}
       <ul className="space-y-1 text-sm">
         {phase.hashes.map(h => <li key={h.hash}><a className="font-semibold text-brand-strong underline" href={link(h.chain, h.hash)} target="_blank" rel="noreferrer">{h.chain === 'nimiq' ? 'Nimiq' : 'Polygonscan'}: {h.hash.slice(0, 10)}…</a></li>)}
       </ul>

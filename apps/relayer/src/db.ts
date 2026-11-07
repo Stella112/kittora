@@ -5,7 +5,7 @@ import { DatabaseSync } from 'node:sqlite'
 import pg from 'pg'
 import { drizzle } from 'drizzle-orm/sqlite-proxy'
 import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core'
-import { and, eq, gt, sql } from 'drizzle-orm'
+import { and, eq, gt, inArray, sql } from 'drizzle-orm'
 
 export const rateHits = sqliteTable('rate_hits', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -62,6 +62,15 @@ export const mandateWindows = sqliteTable('mandate_windows', {
   updatedAt: integer('updated_at').notNull(),
 })
 
+/** Nimiq memo stamps, keyed by the Polygon tx they stamp (first verified stamp wins). */
+export const stamps = sqliteTable('stamps', {
+  polygonTx: text('polygon_tx').primaryKey(),
+  nimiqTx: text('nimiq_tx').notNull(),
+  code: text('code').notNull(),
+  groupId: integer('group_id').notNull(),
+  createdAt: integer('created_at').notNull(),
+})
+
 const DDL = `
 CREATE TABLE IF NOT EXISTS rate_hits (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT NOT NULL, ts INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS rate_hits_key_ts ON rate_hits(key, ts);
@@ -72,6 +81,7 @@ CREATE TABLE IF NOT EXISTS relay_status (hash TEXT PRIMARY KEY, action TEXT NOT 
 CREATE INDEX IF NOT EXISTS relay_status_group ON relay_status(group_id);
 CREATE TABLE IF NOT EXISTS mandate_windows (key TEXT PRIMARY KEY, mandate_id INTEGER NOT NULL, group_id INTEGER NOT NULL, member TEXT NOT NULL, window_idx INTEGER NOT NULL, status TEXT NOT NULL, reason TEXT, tx_hash TEXT, updated_at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS mandate_windows_group ON mandate_windows(group_id);
+CREATE TABLE IF NOT EXISTS stamps (polygon_tx TEXT PRIMARY KEY, nimiq_tx TEXT NOT NULL, code TEXT NOT NULL, group_id INTEGER NOT NULL, created_at INTEGER NOT NULL);
 `
 
 // Postgres (Neon in production). Same Drizzle schema and queries: the sqlite-proxy driver emits plain SQL with `?`
@@ -87,6 +97,7 @@ CREATE TABLE IF NOT EXISTS relay_status (hash TEXT PRIMARY KEY, action TEXT NOT 
 CREATE INDEX IF NOT EXISTS relay_status_group ON relay_status(group_id);
 CREATE TABLE IF NOT EXISTS mandate_windows (key TEXT PRIMARY KEY, mandate_id BIGINT NOT NULL, group_id BIGINT NOT NULL, member TEXT NOT NULL, window_idx BIGINT NOT NULL, status TEXT NOT NULL, reason TEXT, tx_hash TEXT, updated_at BIGINT NOT NULL);
 CREATE INDEX IF NOT EXISTS mandate_windows_group ON mandate_windows(group_id);
+CREATE TABLE IF NOT EXISTS stamps (polygon_tx TEXT PRIMARY KEY, nimiq_tx TEXT NOT NULL, code TEXT NOT NULL, group_id BIGINT NOT NULL, created_at BIGINT NOT NULL);
 `
 
 /** Minimal Postgres client: run a statement, return rows as arrays in column order. */
@@ -146,4 +157,4 @@ export function openDb(path: string) {
 }
 
 export type Db = ReturnType<typeof openDb>['db']
-export { and, eq, gt, sql }
+export { and, eq, gt, inArray, sql }

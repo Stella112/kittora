@@ -212,3 +212,18 @@ Code is on branch `a1` (commit d7d6900); `main` and kittora.xyz still run the pr
 4. README (does not exist yet; its trust section must mention roles and payouts).
 
 **Next:** redeploy simulation, then Nimiq stamps.
+
+## Nov 7 2026: Nimiq stamps (main brief §4.1 item 3 + A1)
+**Built:**
+- `packages/core/src/stamp.ts`: encode/decode, ≤64 bytes.
+- Relayer: `POST /stamps` verification (`src/stamps.ts`), `stamps` table (SQLite + Postgres), stamps attached to `/group/:id/feed` and `/activity/:evm`.
+- App: optional stamp step after every confirmed group action, in Group and NewGroup flows.
+- Feed status "Stamped on Nimiq" with a Nimiq link.
+
+**Evidence:**
+- relayer `stamps.test.ts` 6/6 (all 17 actions round-trip within 64 bytes incl. a 12-digit group id; stamped, idempotent, pending ×2, rejected ×6 cases)
+- web 39/39 incl. stamp status tests; both typecheck; web build passes.
+
+**Open:**
+- Phone check that Nimiq Pay sends a 1-Luna self-payment with the memo and the relayer verifies it on mainnet.
+- Scheduler Autosave runs are unstamped (see DECISIONS).

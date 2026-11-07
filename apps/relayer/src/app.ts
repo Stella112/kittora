@@ -11,6 +11,7 @@ import { handleRelay, type Deps, type RelayRequest } from './policy.ts'
 import { schedulerTick } from './scheduler.ts'
 import { watcherTick } from './watcher.ts'
 import { Auth } from './auth.ts'
+import { verifyStamp, stampsFor } from './stamps.ts'
 import { Indexer } from './indexer.ts'
 import { randomBytes } from 'node:crypto'
 
@@ -106,15 +107,40 @@ export function build(cfg: Config = loadConfig()) {
   })
 
   /** A1.2: the group's on-chain feed with initiators (rebuilt from chain logs on every start). */
+  /** Attach each item's verified Nimiq stamp (if any) by Polygon tx hash. */
+  const withStamps = async <T extends { items: { hash: string }[] }>(r: T) => {
+    const m = await stampsFor(db, r.items.map(i => i.hash))
+    return { ...r, items: r.items.map(i => ({ ...i, stamp: m.get(i.hash.toLowerCase()) })) }
+  }
+
   app.get('/group/:id/feed', (c) => {
     const id = c.req.param('id')
-    return /^\d{1,12}$/.test(id) ? indexed(() => indexer.groupFeed(BigInt(id)))(c) : badParams(c, 'bad group id')
+    return /^\d{1,12}$/.test(id) ? indexed(async () => withStamps(await indexer.groupFeed(BigInt(id))))(c) : badParams(c, 'bad group id')
+  })
+
+  /** Verify and record a Nimiq memo stamp for a Kittora Polygon tx. 200 stamped, 202 not visible yet, 400 rejected. */
+  app.post('/stamps', async (c) => {
+    let b: { polygonTx?: unknown, nimiqTx?: unknown }
+    try {
+      b = await c.req.json()
+    } catch {
+      return badParams(c, 'body must be JSON')
+    }
+    try {
+      const r = await verifyStamp({ polygonTx: String(b.polygonTx ?? ''), nimiqTx: String(b.nimiqTx ?? '') }, { pub, nimiq, db, addresses })
+      if (r.status === 'stamped') return c.json(r)
+      if (r.status === 'pending') return c.json(r, 202)
+      return c.json({ error: 'bad_stamp', ...r }, 400)
+    } catch (e) {
+      log.error({ err: String(e) }, 'stamp verification error')
+      return c.json({ error: 'rpc_down', message: 'could not reach Nimiq or Polygon, please retry' }, 503)
+    }
   })
 
   /** On-chain activity of an address, newest first, with tx hashes and block times. */
   app.get('/activity/:evm', (c) => {
     const evm = c.req.param('evm')
-    return isEvm(evm) ? indexed(() => indexer.activity(evm))(c) : badParams(c, 'bad address')
+    return isEvm(evm) ? indexed(async () => withStamps(await indexer.activity(evm)))(c) : badParams(c, 'bad address')
   })
 
   app.post('/relay', async (c) => {

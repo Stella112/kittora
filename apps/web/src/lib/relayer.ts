@@ -14,7 +14,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 /** One indexed contract event (args are JSON: bigints arrive as decimal strings). */
-export interface ChainActivity { contract: 'vault' | 'group', event: string, args: Record<string, unknown>, hash: string, block: string, logIndex: number, ts?: number }
+export interface ChainActivity { contract: 'vault' | 'group', event: string, args: Record<string, unknown>, hash: string, block: string, logIndex: number, ts?: number, stamp?: string }
 
 /** /group/:id: ids the contract cannot enumerate, approvers, and the relayer's own tracking (A1.2 / A1.3). */
 export interface GroupIndex {
@@ -39,5 +39,6 @@ export const relayer = {
   activity: (evm: string) => call<{ items: ChainActivity[] }>(`/activity/${evm}`),
   relay: (b: { action: string, params: Record<string, unknown>, signature?: string, nimiqLink?: unknown }) =>
     call<{ hash: `0x${string}`, status: 'pending' }>('/relay', { method: 'POST', body: JSON.stringify(b, (_k, v) => (typeof v === 'bigint' ? v.toString() : v)) }),
+  stamp: (polygonTx: string, nimiqTx: string) => call<{ status: 'stamped' | 'pending', nimiqTx: string, message?: string }>('/stamps', { method: 'POST', body: JSON.stringify({ polygonTx, nimiqTx }) }),
   status: (hash: string) => call<{ hash: string, status: 'pending' | 'confirmed' | 'failed', block?: number }>(`/status/${hash}`),
 }

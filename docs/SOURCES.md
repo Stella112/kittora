@@ -59,3 +59,9 @@ Nimiq Pay source = https://github.com/nimiq/nimiq-pay-app @ `2115a8d3839a2233ce5
 - **Nimiq explorer link:** `https://nimiq.watch/#<hash>`, the format used by NimBooks (`mcp/src/chain.ts` `explorerTxUrl`), a reference app in the brief. Testnet host `test.nimiq.watch` responds 200; the `#<hash>` format there is assumed to match (to confirm on device).
 - **Nimiq mainnet RPC:** `https://rpc.nimiqwatch.com` (testnet `https://rpc.testnet.nimiqwatch.com`), from nimiq-pay-app `src/lib/mini-app-launcher.ts` L34.
 - **Nimiq address → bytes20** in the browser: base32 alphabet `0123456789ABCDEFGHJKLMNPQRSTUVXY`. Cross-checked against `@nimiq/core` serialization in `apps/web/src/lib/nimiqAddress.test.ts` (20 random plus 1 fixed address).
+
+## Nimiq stamps (checked Nov 7 2026, nimiq-pay-app @dd90a9c5)
+- `sendBasicTransactionWithData` (`src/composables/useMiniAppHost.ts` ~L1660): the message is the `data` param and the host **rejects messages over 64 UTF-8 bytes** before prompting. `fee` must be a non-negative integer.
+- `sendPayment` (~L2151–2260) returns `result.tx.hash`, a real Nimiq tx hash, for payments **and staking calls**. This answers the Phase 4 open question about NIM SafeLock explorer links.
+- Payments are signed and sent **from the user's HTLC** ("Everything but remove-stake spends from the HTLC"), so a stamp's sender address is not the user's address.
+- `getTransactionByHash` (core-rs-albatross rpc-interface; live on `rpc.nimiqwatch.com`) returns `recipientData` as hex plus `confirmations` and `executionResult`.
