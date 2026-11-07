@@ -12,7 +12,15 @@ export interface GroupParams {
   maxSharesPerMeeting: number
   approvalsRequired: number
   maxMembers: number
+  /** A1.5: largest single social fund payment; 0 = no cap beyond the fund balance. */
+  maxSocialPayout: bigint
 }
+
+/** A1.1: plain text from the contract (never rendered as HTML). */
+export interface GroupProfile { name: string, purpose: string, coverId: number }
+
+/** A1.4: mirrors GroupKitty.Role. */
+export enum Role { None, Member, Treasurer, Admin }
 
 export interface MemberRow {
   address: Address
@@ -23,6 +31,7 @@ export interface MemberRow {
   /** Shares bought per meeting, oldest first, ending with the current meeting. */
   history: bigint[]
   socialPaidNow: boolean
+  role: Role
 }
 
 export enum LoanStatus { None, Requested, Disbursed, Repaid, Defaulted, Cancelled }
@@ -44,7 +53,27 @@ export interface LoanView {
   approvedBy: Record<string, boolean>
 }
 
-export interface GrantView { id: bigint, member: Address, amount: bigint, approvals: number, paid: boolean, approvedBy: Record<string, boolean> }
+/** A1.5: a social fund payment proposal. */
+export interface PayoutView {
+  id: bigint
+  proposer: Address
+  recipient: Address
+  amount: bigint
+  expiresAt: bigint
+  approvals: number
+  treasurerApproved: boolean
+  adminApproved: boolean
+  executed: boolean
+  reason: string
+  approvedBy: Record<string, boolean>
+}
+
+/** Group Autosave mandate (vault), for the Members tab. */
+export interface GroupMandate { id: bigint, owner: Address, amountPerRun: bigint, runs: number, maxRuns: number, expiry: bigint, revoked: boolean, active: boolean }
+
+/** Relayer tracking (A1.2 / A1.3): relays not yet confirmed, and Autosave windows that were skipped or failed. */
+export interface RelayTrack { hash: string, action: string, signer: string, groupId: number | null, refId: number | null, status: 'submitted' | 'failed', createdAt: number }
+export interface AutosaveWindow { key: string, mandateId: number, member: string, windowIdx: number, status: 'sent' | 'skipped' | 'failed', reason: string | null, txHash: string | null, updatedAt: number }
 
 export interface GroupDetail {
   id: bigint
@@ -70,8 +99,38 @@ export interface GroupDetail {
   /** USDT value of one share in micro-USDT (pool value per share, social fund excluded). */
   shareValue: bigint
   loans: LoanView[]
-  grants: GrantView[]
+  payouts: PayoutView[]
+  profile: GroupProfile
+  admin: Address
+  treasurers: Address[]
+  mandates: GroupMandate[]
+  relays: RelayTrack[]
+  autosaveWindows: AutosaveWindow[]
+  /** Who approved each loan / payment (from the relayer index of approval events). */
+  approvers: { loans: Record<string, string[]>, payouts: Record<string, string[]> }
 }
+
+export const payoutExpired = (po: PayoutView, g: Pick<GroupDetail, 'now'>) => !po.executed && g.now > po.expiresAt
+/** Mirrors executeSocialPayout's approval rule: enough approvals and a Treasurer (or the Admin while there is none). */
+export const payoutReady = (po: PayoutView, g: Pick<GroupDetail, 'now' | 'p' | 'treasurers'>) =>
+  !po.executed && g.now <= po.expiresAt && po.approvals >= g.p.approvalsRequired && (po.treasurerApproved || (g.treasurers.length === 0 && po.adminApproved))
+
+/** Who may approve a payout: members other than the proposer and the recipient, who have not approved yet. */
+export const canApprovePayout = (po: PayoutView, me: string, g: Pick<GroupDetail, 'now'>) =>
+  !po.executed && g.now <= po.expiresAt && !same(me, po.proposer) && !same(me, po.recipient) && !po.approvedBy[me.toLowerCase()]
+
+/** Does this payout still need an officer (Treasurer, or Admin when there is none) and is `me` one? */
+export function officerNeeded(po: PayoutView, g: Pick<GroupDetail, 'treasurers' | 'admin'>, me: string) {
+  const noTreasurer = g.treasurers.length === 0
+  const missing = !po.treasurerApproved && !(noTreasurer && po.adminApproved)
+  const iAmOfficer = noTreasurer ? same(me, g.admin) : g.treasurers.some(t => same(t, me))
+  return { missing, iAmOfficer }
+}
+
+export const same = (a?: string | null, b?: string | null) => Boolean(a && b && a.toLowerCase() === b.toLowerCase())
+
+/** UTF-8 byte length: the unit the contract limits profile text and reasons by. */
+export const byteLen = (s: string) => new TextEncoder().encode(s).length
 
 /** Value of `shares` at the current pool value: mirrors GroupKitty.valueOfShares. */
 export function valueOf(g: Pick<GroupDetail, 'totalShares' | 'cash' | 'outstanding' | 'p'>, shares: bigint) {

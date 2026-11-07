@@ -169,10 +169,11 @@ contract GroupKittyInvariants is Test {
             maxLoanMultipleBps: 30000,
             maxSharesPerMeeting: 5,
             approvalsRequired: 2,
-            maxMembers: 10
+            maxMembers: 10,
+            maxSocialPayout: 0
         });
         vm.prank(actors[0]);
-        g = gk.createGroup(actors[0], p, 0, type(uint256).max, "");
+        g = gk.createGroup(actors[0], p, GroupKitty.Profile({name: "Inv", purpose: "", coverId: 0}), 0, type(uint256).max, "");
         for (uint256 i = 1; i < 5; ++i) {
             vm.prank(actors[i]);
             gk.join(actors[i], g, 0, type(uint256).max, "");

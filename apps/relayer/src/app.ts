@@ -1,10 +1,11 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import pino from 'pino'
-import type { Hex } from 'viem'
+import type { Abi, Hex, PublicClient } from 'viem'
+import { GroupKittyAbi } from '@kittora/core'
 import { loadConfig, type Config } from './config.ts'
 import { makeChain, publicClient, RelayError, TxSender } from './chain.ts'
-import { openDb, openPgDb, pgPool } from './db.ts'
+import { openDb, openPgDb, pgPool, relayStatus, mandateWindows, eq, and, gt, type Db } from './db.ts'
 import { NimiqRpc } from './nimiq.ts'
 import { handleRelay, type Deps, type RelayRequest } from './policy.ts'
 import { schedulerTick } from './scheduler.ts'
@@ -70,10 +71,44 @@ export function build(cfg: Config = loadConfig()) {
     return isEvm(evm) ? indexed(() => indexer.of(evm))(c) : badParams(c, 'bad address')
   })
 
-  /** Loan and grant ids of a group (the contract cannot enumerate them per group). */
+  /** Group of a relay request, read from the contract (the index may lag a new loan or payment by seconds). */
+  const groupOf = async (params: Record<string, unknown>): Promise<{ groupId: bigint | null, refId: bigint | null }> => {
+    const n = (v: unknown) => (v === undefined || v === null ? null : BigInt(String(v)))
+    const gk = GroupKittyAbi as Abi
+    if (params.groupId !== undefined) return { groupId: n(params.groupId), refId: null }
+    if (params.loanId !== undefined) {
+      const l = await pub.readContract({ address: addresses.group, abi: gk, functionName: 'loan', args: [BigInt(String(params.loanId))] }) as { groupId: bigint }
+      return { groupId: l.groupId || null, refId: n(params.loanId) }
+    }
+    if (params.payoutId !== undefined) {
+      const po = await pub.readContract({ address: addresses.group, abi: gk, functionName: 'payout', args: [BigInt(String(params.payoutId))] }) as { groupId: bigint }
+      return { groupId: po.groupId || null, refId: n(params.payoutId) }
+    }
+    return { groupId: null, refId: null }
+  }
+
+  const RECENT = 14 * 86_400 // relay and Autosave records shown in the feed (older ones live on-chain only)
+
+  /** A group's loan / payment / mandate ids and approvers, plus our own tracking: relays not yet confirmed or failed,
+   * and Autosave windows that were skipped or failed (A1.2, A1.3). */
   app.get('/group/:id', (c) => {
     const id = c.req.param('id')
-    return /^\d{1,12}$/.test(id) ? indexed(() => indexer.groupIndex(BigInt(id)))(c) : badParams(c, 'bad group id')
+    if (!/^\d{1,12}$/.test(id)) return badParams(c, 'bad group id')
+    return indexed(async () => {
+      const since = Math.floor(Date.now() / 1000) - RECENT
+      const [ix, relays, windows] = await Promise.all([
+        indexer.groupIndex(BigInt(id)),
+        db.select().from(relayStatus).where(and(eq(relayStatus.groupId, Number(id)), gt(relayStatus.createdAt, since))).all(),
+        db.select().from(mandateWindows).where(and(eq(mandateWindows.groupId, Number(id)), gt(mandateWindows.updatedAt, since))).all(),
+      ])
+      return { ...ix, relays: relays.filter(r => r.status !== 'confirmed'), autosaveWindows: windows }
+    })(c)
+  })
+
+  /** A1.2: the group's on-chain feed with initiators (rebuilt from chain logs on every start). */
+  app.get('/group/:id/feed', (c) => {
+    const id = c.req.param('id')
+    return /^\d{1,12}$/.test(id) ? indexed(() => indexer.groupFeed(BigInt(id)))(c) : badParams(c, 'bad group id')
   })
 
   /** On-chain activity of an address, newest first, with tx hashes and block times. */
@@ -92,6 +127,7 @@ export function build(cfg: Config = loadConfig()) {
     const clientKey = c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? 'local'
     try {
       const { hash } = await handleRelay(body, deps, clientKey)
+      await trackRelay(db, hash, body, groupOf).catch(e => log.warn({ err: String(e) }, 'relay tracking not saved'))
       return c.json({ hash, status: 'pending' })
     } catch (e) {
       if (e instanceof RelayError) {
@@ -134,9 +170,11 @@ export function build(cfg: Config = loadConfig()) {
     }
     // Keep the read index warm so API requests rarely wait on a catch-up.
     loop(15_000, () => indexer.sync())
+    // Submitted → Confirmed / Failed from receipts (A1.2: status never comes from optimistic UI state)
+    loop(15_000, () => settleRelays(db, pub))
     loop(cfg.SCHEDULER_INTERVAL_MS, async () => {
       await checkBalances()
-      const r = await schedulerTick({ pub, sender, db, log: log.child({ svc: 'scheduler' }), vault: addresses.vault, usdt: addresses.usdt })
+      const r = await schedulerTick({ pub, sender, db, log: log.child({ svc: 'scheduler' }), vault: addresses.vault, usdt: addresses.usdt, group: addresses.group })
       health.lastScheduler = Date.now()
       if (r.sent || r.confirmed) log.info(r, 'scheduler tick')
     })
@@ -152,4 +190,26 @@ export function build(cfg: Config = loadConfig()) {
   }
 
   return { app, log, dbReady, deps, auth, indexer, sender, attester, startLoops, stop: () => { timers.forEach(clearInterval); close() } }
+}
+
+/** Records a relayed tx with its group so the group feed can show it as Submitted until its receipt arrives. */
+export async function trackRelay(db: Db, hash: string, body: RelayRequest, groupOf: (p: Record<string, unknown>) => Promise<{ groupId: bigint | null, refId: bigint | null }>) {
+  const params = (body?.params ?? {}) as Record<string, unknown>
+  const { groupId, refId } = await groupOf(params)
+  const now = Math.floor(Date.now() / 1000)
+  const signer = String(params.member ?? params.borrower ?? params.payer ?? params.proposer ?? params.admin ?? params.creator ?? params.owner ?? '').toLowerCase()
+  await db.insert(relayStatus).values({
+    hash, action: String(body.action), signer, groupId: groupId === null ? null : Number(groupId), refId: refId === null ? null : Number(refId),
+    status: 'submitted', createdAt: now, updatedAt: now,
+  }).onConflictDoNothing()
+}
+
+/** Moves submitted relays to confirmed / failed once their receipt is on-chain. */
+export async function settleRelays(db: Db, pub: PublicClient) {
+  const open = await db.select().from(relayStatus).where(eq(relayStatus.status, 'submitted')).all()
+  for (const r of open.slice(0, 50)) {
+    const rc = await pub.getTransactionReceipt({ hash: r.hash as Hex }).catch(() => null)
+    if (!rc) continue
+    await db.update(relayStatus).set({ status: rc.status === 'success' ? 'confirmed' : 'failed', updatedAt: Math.floor(Date.now() / 1000) }).where(eq(relayStatus.hash, r.hash))
+  }
 }

@@ -58,9 +58,18 @@ export function describe(e: Pick<ChainActivity, 'event' | 'args'>, me: string): 
       return t(`${same(a.payer, me) ? 'You repaid' : 'Repaid'} ${u('amount')} on loan #${a.loanId}${left === 0n ? ' (fully repaid)' : `, ${fmtUsdt(left)} left`}`, left === 0n ? 'good' : 'normal')
     }
     case 'LoanDefaulted': return t(`Loan #${a.loanId} defaulted: ${u('writtenOff')} written off from shares`, 'bad')
-    case 'GrantRequested': return t(`Asked for ${u('amount')} from the social fund`)
-    case 'GrantApproved': return same(a.member, me) ? t(`You approved social fund request #${a.grantId}`) : t(`Your social fund request got an approval`)
-    case 'GrantPaid': return t(`Social fund paid out: ${u('amount')}`, 'good')
+    case 'SocialPayoutProposed':
+      return same(a.recipient, me)
+        ? t(`Social fund payment proposed for you: ${u('amount')}`)
+        : t(`Proposed a social fund payment of ${u('amount')}`)
+    case 'SocialPayoutApproved': return same(a.member, me) ? t('You approved a social fund payment') : t('A social fund payment you proposed got an approval')
+    case 'SocialPayoutExecuted': return same(a.recipient, me) ? t(`Social fund payment received: ${u('amount')}`, 'good') : t(`Social fund payment made: ${u('amount')}`)
+    case 'GroupProfileUpdated': return t(`Group profile: ${String(a.name)}`)
+    case 'RoleChanged': {
+      const role = ['removed', 'Member', 'Treasurer', 'Admin'][Number(a.newRole)] ?? 'Member'
+      return same(a.member, me) ? t(Number(a.newRole) === 0 ? `You left group #${a.groupId}` : `You are now ${role} in group #${a.groupId}`) : t(`Role change in group #${a.groupId}`)
+    }
+    case 'MemberRemoved': return same(a.member, me) ? t(`You were removed from group #${a.groupId}`, 'bad') : t(`Removed a member from group #${a.groupId}`)
     case 'ShareOutClaimed': {
       const rolled = String(a.rolledIntoPocket ?? '0') !== '0'
       return t(`Share-Out from group #${a.groupId}: ${u('amount')}${rolled ? ` into pocket #${a.rolledIntoPocket}` : ' to your wallet'}`, 'good')

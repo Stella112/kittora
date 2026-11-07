@@ -113,16 +113,25 @@ abstract contract Base is Test {
             maxLoanMultipleBps: 30000, // 3x
             maxSharesPerMeeting: 5,
             approvalsRequired: 2,
-            maxMembers: 10
+            maxMembers: 10,
+            maxSocialPayout: 0 // no cap beyond the social fund balance
         });
     }
 
+    function _prof() internal pure returns (GroupKitty.Profile memory) {
+        return GroupKitty.Profile({name: "Test group", purpose: "", coverId: 0});
+    }
+
     function _create(address who, GroupKitty.Params memory p) internal returns (uint256 g) {
+        g = _createP(who, p, _prof());
+    }
+
+    function _createP(address who, GroupKitty.Params memory p, GroupKitty.Profile memory prof) internal returns (uint256 g) {
         uint256 n = gk.nonces(who);
         uint256 dl = _dl();
         _arm();
         vm.prank(who);
-        g = gk.createGroup(who, p, n, dl, "");
+        g = gk.createGroup(who, p, prof, n, dl, "");
     }
 
     function _join(address who, uint256 g) internal {

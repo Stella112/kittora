@@ -14,7 +14,7 @@ export function SignIn() {
         <h1 className="text-2xl font-bold leading-tight">Save alone. Grow together.</h1>
         <ul className="mt-4 space-y-3 text-[15px]">
           <li><b>Borrow from your group</b> with friends as guarantors. Interest goes back to everyone.</li>
-          <li><b>Own shares</b> in your group pot and get your savings plus profit at Share-Out.</li>
+          <li><b>Own shares</b> in your Group Kitty and get your savings plus profit at Share-Out.</li>
           <li><b>Earn on dollars</b>: USDT pockets earn a variable Aave rate.</li>
         </ul>
       </Card>

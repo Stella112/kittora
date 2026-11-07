@@ -7,6 +7,9 @@ const big = z.union([z.string().regex(/^\d+$/), z.number().int().nonnegative()])
 const address = z.string().regex(/^0x[0-9a-fA-F]{40}$/).transform(s => s.toLowerCase() as `0x${string}`)
 const bytes20 = z.string().regex(/^0x[0-9a-fA-F]{40}$/).transform(s => s as `0x${string}`)
 const bytes32 = z.string().regex(/^0x[0-9a-fA-F]{64}$/).transform(s => s as `0x${string}`)
+/** Plain text measured in UTF-8 bytes, the unit the contract checks (A1 limits). */
+const text = (min: number, max: number) => z.string().refine((v) => { const n = new TextEncoder().encode(v).length; return n >= min && n <= max }, `must be ${min}-${max} bytes`)
+const cover = z.number().int().min(0).max(7)
 
 export type Target = 'vault' | 'group' | 'usdt'
 
@@ -63,12 +66,33 @@ export const ACTIONS: Record<string, ActionSpec> = {
     schema: s({
       creator: address, sharePrice: big, socialFundPerMeeting: big, meetingInterval: big, cycleEnd: big, gracePeriod: big,
       interestBps: z.number().int(), maxLoanMultipleBps: z.number().int(), maxSharesPerMeeting: z.number().int(),
-      approvalsRequired: z.number().int(), maxMembers: z.number().int(), nonce: big, deadline: big,
+      approvalsRequired: z.number().int(), maxMembers: z.number().int(), maxSocialPayout: big,
+      name: text(1, 32), purpose: text(0, 80), coverId: cover, nonce: big, deadline: big,
     }),
     args: (p, sig) => {
-      const { creator, nonce, deadline, ...params } = p
-      return [creator, params, nonce, deadline, sig]
+      const { creator, nonce, deadline, name, purpose, coverId, ...params } = p
+      return [creator, params, { name, purpose, coverId }, nonce, deadline, sig]
     },
+  },
+  'group.updateProfile': {
+    target: 'group', fn: 'updateProfile', primaryType: 'UpdateProfile', signerField: 'admin',
+    schema: s({ admin: address, groupId: big, name: text(1, 32), purpose: text(0, 80), coverId: cover, nonce: big, deadline: big }),
+    args: (p, sig) => [p.admin, p.groupId, p.name, p.purpose, p.coverId, p.nonce, p.deadline, sig],
+  },
+  'group.setTreasurer': {
+    target: 'group', fn: 'setTreasurer', primaryType: 'SetTreasurer', signerField: 'admin',
+    schema: s({ admin: address, groupId: big, member: address, enabled: z.boolean(), nonce: big, deadline: big }),
+    args: (p, sig) => [p.admin, p.groupId, p.member, p.enabled, p.nonce, p.deadline, sig],
+  },
+  'group.transferAdmin': {
+    target: 'group', fn: 'transferAdmin', primaryType: 'TransferAdmin', signerField: 'admin',
+    schema: s({ admin: address, groupId: big, newAdmin: address, nonce: big, deadline: big }),
+    args: (p, sig) => [p.admin, p.groupId, p.newAdmin, p.nonce, p.deadline, sig],
+  },
+  'group.removeMember': {
+    target: 'group', fn: 'removeMember', primaryType: 'RemoveMember', signerField: 'admin',
+    schema: s({ admin: address, groupId: big, member: address, nonce: big, deadline: big }),
+    args: (p, sig) => [p.admin, p.groupId, p.member, p.nonce, p.deadline, sig],
   },
   'group.join': {
     target: 'group', fn: 'join', primaryType: 'JoinGroup', signerField: 'member',
@@ -100,15 +124,15 @@ export const ACTIONS: Record<string, ActionSpec> = {
     schema: s({ payer: address, loanId: big, amount: big, nonce: big, deadline: big }),
     args: (p, sig) => [p.payer, p.loanId, p.amount, p.nonce, p.deadline, sig],
   },
-  'group.requestGrant': {
-    target: 'group', fn: 'requestGrant', primaryType: 'RequestGrant', signerField: 'member',
-    schema: s({ member: address, groupId: big, amount: big, nonce: big, deadline: big }),
-    args: (p, sig) => [p.member, p.groupId, p.amount, p.nonce, p.deadline, sig],
+  'group.proposeSocialPayout': {
+    target: 'group', fn: 'proposeSocialPayout', primaryType: 'ProposeSocialPayout', signerField: 'proposer',
+    schema: s({ proposer: address, groupId: big, recipient: address, amount: big, reason: text(1, 80), nonce: big, deadline: big }),
+    args: (p, sig) => [p.proposer, p.groupId, p.recipient, p.amount, p.reason, p.nonce, p.deadline, sig],
   },
-  'group.approveGrant': {
-    target: 'group', fn: 'approveGrant', primaryType: 'ApproveGrant', signerField: 'member',
-    schema: s({ member: address, grantId: big, nonce: big, deadline: big }),
-    args: (p, sig) => [p.member, p.grantId, p.nonce, p.deadline, sig],
+  'group.approveSocialPayout': {
+    target: 'group', fn: 'approveSocialPayout', primaryType: 'ApproveSocialPayout', signerField: 'member',
+    schema: s({ member: address, payoutId: big, nonce: big, deadline: big }),
+    args: (p, sig) => [p.member, p.payoutId, p.nonce, p.deadline, sig],
   },
   'group.claimShareOut': {
     target: 'group', fn: 'claimShareOut', primaryType: 'ClaimShareOut', signerField: 'member',
@@ -123,6 +147,10 @@ export const ACTIONS: Record<string, ActionSpec> = {
   'group.markDefault': {
     target: 'group', fn: 'markDefault', primaryType: null, signerField: null,
     schema: s({ loanId: big }), args: p => [p.loanId],
+  },
+  'group.executeSocialPayout': {
+    target: 'group', fn: 'executeSocialPayout', primaryType: null, signerField: null,
+    schema: s({ payoutId: big }), args: p => [p.payoutId],
   },
   // Gasless USDT approve via the token's executeMetaTransaction (Nimiq Pay pattern). Spender must be ours.
   'usdt.approve': {

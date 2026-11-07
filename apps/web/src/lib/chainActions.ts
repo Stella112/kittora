@@ -61,9 +61,10 @@ export async function signAndRelayGroup(action: string, primary: GroupPrimary, s
   return hash
 }
 
-/** Permissionless calls (disburse, markDefault): nothing to sign, the contract checks every rule. */
-export async function relayOpen(action: 'group.disburse' | 'group.markDefault', loanId: bigint): Promise<Hex> {
-  const { hash } = await relayer.relay({ action, params: { loanId } })
+/** Permissionless calls (disburse, markDefault, executeSocialPayout): nothing to sign, the contract checks every rule. */
+export async function relayOpen(action: 'group.disburse' | 'group.markDefault' | 'group.executeSocialPayout', id: bigint): Promise<Hex> {
+  const params = action === 'group.executeSocialPayout' ? { payoutId: id } : { loanId: id }
+  const { hash } = await relayer.relay({ action, params })
   return hash
 }
 

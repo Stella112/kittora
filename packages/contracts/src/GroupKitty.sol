@@ -29,6 +29,37 @@ contract GroupKitty is SigAuth, ReentrancyGuard {
         uint8 maxSharesPerMeeting; // 1..5
         uint8 approvalsRequired;
         uint16 maxMembers;
+        /// Largest single social-fund payment (A1.5). 0 = no cap beyond the social fund balance.
+        uint256 maxSocialPayout;
+    }
+
+    /// A1.1: shown in the app as plain text only. Covers are an index into the app's fixed preset list.
+    struct Profile {
+        string name; // 1..32 bytes
+        string purpose; // 0..80 bytes
+        uint8 coverId; // < COVER_COUNT
+    }
+
+    /// A1.4. Roles never change the money rules: no role can move pool funds.
+    enum Role {
+        None,
+        Member,
+        Treasurer,
+        Admin
+    }
+
+    /// A1.5: a payment from the social fund to a current member, approved by members and a Treasurer.
+    struct Payout {
+        uint256 groupId;
+        address proposer;
+        address recipient;
+        uint256 amount;
+        uint64 expiresAt;
+        uint16 approvals;
+        bool treasurerApproved; // an approver held the Treasurer role when approving
+        bool adminApproved; // the Admin approved (counts instead of a Treasurer only while the group has none)
+        bool executed;
+        string reason; // 1..80 bytes, plain text
     }
 
     struct Group {
@@ -83,20 +114,33 @@ contract GroupKitty is SigAuth, ReentrancyGuard {
         uint256[] pledges;
     }
 
-    struct Grant {
-        address member;
-        uint256 groupId;
-        uint256 amount;
-        uint16 approvals;
-        bool paid;
-    }
-
     uint256 public constant POOL_CAP = 500e6; // 500 USDT per group (pilot cap, immutable)
     uint256 public constant MAX_GUARANTORS = 10;
+    uint8 public constant COVER_COUNT = 8;
+    uint256 public constant MAX_NAME_BYTES = 32;
+    uint256 public constant MAX_PURPOSE_BYTES = 80;
+    uint256 public constant MAX_REASON_BYTES = 80;
+    uint8 public constant MAX_TREASURERS = 2;
+    uint64 public constant PAYOUT_TTL = 7 days;
 
     bytes32 public constant CREATE_TYPEHASH = keccak256(
-        "CreateGroup(address creator,uint256 sharePrice,uint256 socialFundPerMeeting,uint64 meetingInterval,uint64 cycleEnd,uint64 gracePeriod,uint16 interestBps,uint16 maxLoanMultipleBps,uint8 maxSharesPerMeeting,uint8 approvalsRequired,uint16 maxMembers,uint256 nonce,uint256 deadline)"
+        "CreateGroup(address creator,uint256 sharePrice,uint256 socialFundPerMeeting,uint64 meetingInterval,uint64 cycleEnd,uint64 gracePeriod,uint16 interestBps,uint16 maxLoanMultipleBps,uint8 maxSharesPerMeeting,uint8 approvalsRequired,uint16 maxMembers,uint256 maxSocialPayout,string name,string purpose,uint8 coverId,uint256 nonce,uint256 deadline)"
     );
+    bytes32 public constant PROFILE_TYPEHASH = keccak256(
+        "UpdateProfile(address admin,uint256 groupId,string name,string purpose,uint8 coverId,uint256 nonce,uint256 deadline)"
+    );
+    bytes32 public constant TREASURER_TYPEHASH = keccak256(
+        "SetTreasurer(address admin,uint256 groupId,address member,bool enabled,uint256 nonce,uint256 deadline)"
+    );
+    bytes32 public constant TRANSFER_ADMIN_TYPEHASH =
+        keccak256("TransferAdmin(address admin,uint256 groupId,address newAdmin,uint256 nonce,uint256 deadline)");
+    bytes32 public constant REMOVE_TYPEHASH =
+        keccak256("RemoveMember(address admin,uint256 groupId,address member,uint256 nonce,uint256 deadline)");
+    bytes32 public constant PROPOSE_TYPEHASH = keccak256(
+        "ProposeSocialPayout(address proposer,uint256 groupId,address recipient,uint256 amount,string reason,uint256 nonce,uint256 deadline)"
+    );
+    bytes32 public constant PAYOUT_APPROVE_TYPEHASH =
+        keccak256("ApproveSocialPayout(address member,uint256 payoutId,uint256 nonce,uint256 deadline)");
     bytes32 public constant JOIN_TYPEHASH =
         keccak256("JoinGroup(address member,uint256 groupId,uint256 nonce,uint256 deadline)");
     bytes32 public constant BUY_TYPEHASH =
@@ -110,10 +154,6 @@ contract GroupKitty is SigAuth, ReentrancyGuard {
         keccak256("CancelLoan(address borrower,uint256 loanId,uint256 nonce,uint256 deadline)");
     bytes32 public constant REPAY_TYPEHASH =
         keccak256("Repay(address payer,uint256 loanId,uint256 amount,uint256 nonce,uint256 deadline)");
-    bytes32 public constant GRANT_TYPEHASH =
-        keccak256("RequestGrant(address member,uint256 groupId,uint256 amount,uint256 nonce,uint256 deadline)");
-    bytes32 public constant GRANT_APPROVE_TYPEHASH =
-        keccak256("ApproveGrant(address member,uint256 grantId,uint256 nonce,uint256 deadline)");
     bytes32 public constant CLAIM_TYPEHASH = keccak256(
         "ClaimShareOut(address member,uint256 groupId,uint256 rollPocketId,uint256 nonce,uint256 deadline)"
     );
@@ -123,17 +163,22 @@ contract GroupKitty is SigAuth, ReentrancyGuard {
 
     uint256 public groupCount;
     uint256 public loanCount;
-    uint256 public grantCount;
+    uint256 public payoutCount;
     mapping(uint256 => Group) internal _groups;
     mapping(uint256 => mapping(address => Member)) public members;
     mapping(uint256 => address[]) internal _memberList;
+    mapping(uint256 => mapping(address => uint256)) internal _memberIndex; // 1-based position in _memberList
+    mapping(uint256 => Profile) internal _profiles;
+    mapping(uint256 => address) public adminOf;
+    mapping(uint256 => mapping(address => bool)) public isTreasurer;
+    mapping(uint256 => uint8) public treasurerCount;
+    mapping(uint256 => Payout) internal _payouts;
+    mapping(uint256 => mapping(address => bool)) public payoutApprovedBy;
     /// groupId => member => meeting index => shares bought in that meeting (group board: late / missed)
     mapping(uint256 => mapping(address => mapping(uint256 => uint256))) public sharesInMeeting;
     mapping(uint256 => mapping(address => mapping(uint256 => bool))) public socialPaid;
     mapping(uint256 => Loan) internal _loans;
     mapping(uint256 => mapping(address => bool)) public loanApprovedBy;
-    mapping(uint256 => Grant) public grants;
-    mapping(uint256 => mapping(address => bool)) public grantApprovedBy;
 
     event GroupCreated(uint256 indexed groupId, address indexed creator, Params params);
     event MemberJoined(uint256 indexed groupId, address indexed member);
@@ -155,9 +200,20 @@ contract GroupKitty is SigAuth, ReentrancyGuard {
     event LoanDisbursed(uint256 indexed loanId, uint256 amount, uint64 dueAt);
     event LoanRepaid(uint256 indexed loanId, address indexed payer, uint256 amount, uint256 remaining);
     event LoanDefaulted(uint256 indexed loanId, uint256 writtenOff, uint256 borrowerSharesCut, uint256 guarantorSharesCut);
-    event GrantRequested(uint256 indexed grantId, uint256 indexed groupId, address indexed member, uint256 amount);
-    event GrantApproved(uint256 indexed grantId, address indexed member, uint16 approvals);
-    event GrantPaid(uint256 indexed grantId, uint256 amount);
+    event GroupProfileUpdated(uint256 indexed groupId, string name, string purpose, uint8 coverId);
+    event RoleChanged(uint256 indexed groupId, address indexed member, Role oldRole, Role newRole, address by);
+    event MemberRemoved(uint256 indexed groupId, address indexed member, address by);
+    event SocialPayoutProposed(
+        uint256 indexed payoutId,
+        uint256 indexed groupId,
+        address indexed proposer,
+        address recipient,
+        uint256 amount,
+        uint64 expiresAt,
+        string reason
+    );
+    event SocialPayoutApproved(uint256 indexed payoutId, address indexed member, uint16 approvals, bool asTreasurer);
+    event SocialPayoutExecuted(uint256 indexed payoutId, uint256 indexed groupId, address indexed recipient, uint256 amount);
     event ForfeitReceived(uint256 indexed groupId, uint256 amount);
     event ShareOutClaimed(
         uint256 indexed groupId, address indexed member, uint256 amount, uint256 rolledIntoPocket
@@ -184,6 +240,14 @@ contract GroupKitty is SigAuth, ReentrancyGuard {
     error AlreadyClaimed();
     error NotVault();
     error ShareOutStarted();
+    error NotAdmin();
+    error BadProfile();
+    error TooManyTreasurers();
+    error AdminCannotBeTreasurer();
+    error NotRemovable();
+    error PayoutExpired();
+    error PayoutNotReady();
+    error AlreadyContributed();
 
     constructor(IERC20 _asset, address _vault) SigAuth("Kittora GroupKitty", "1") {
         if (address(_asset) == address(0) || _vault == address(0)) revert BadParams();
@@ -230,6 +294,21 @@ contract GroupKitty is SigAuth, ReentrancyGuard {
         return _memberList[g];
     }
 
+    function profile(uint256 g) external view returns (Profile memory) {
+        return _profiles[g];
+    }
+
+    function payout(uint256 id) external view returns (Payout memory) {
+        return _payouts[id];
+    }
+
+    function roleOf(uint256 g, address a) public view returns (Role) {
+        if (!members[g][a].joined) return Role.None;
+        if (adminOf[g] == a) return Role.Admin;
+        if (isTreasurer[g][a]) return Role.Treasurer;
+        return Role.Member;
+    }
+
     function loan(uint256 id) external view returns (Loan memory) {
         return _loans[id];
     }
@@ -258,49 +337,190 @@ contract GroupKitty is SigAuth, ReentrancyGuard {
 
     // ------------------------------------------------------------------ group lifecycle
 
-    function createGroup(address creator, Params calldata p, uint256 nonce, uint256 deadline, bytes calldata sig)
-        external
-        nonReentrant
-        returns (uint256 g)
-    {
-        _auth(creator, _createHash(creator, p, nonce, deadline), nonce, deadline, sig);
+    function createGroup(
+        address creator,
+        Params calldata p,
+        Profile calldata prof,
+        uint256 nonce,
+        uint256 deadline,
+        bytes calldata sig
+    ) external nonReentrant returns (uint256 g) {
+        _auth(creator, _createHash(creator, p, prof, nonce, deadline), nonce, deadline, sig);
         if (
             p.sharePrice == 0 || p.meetingInterval == 0 || p.cycleEnd <= block.timestamp || p.maxSharesPerMeeting == 0
                 || p.maxSharesPerMeeting > 5 || p.approvalsRequired == 0 || p.maxMembers < 2
                 || p.approvalsRequired >= p.maxMembers || p.maxLoanMultipleBps == 0 || p.interestBps > 10_000
         ) revert BadParams();
+        _checkProfile(prof.name, prof.purpose, prof.coverId);
         g = ++groupCount;
         Group storage gr = _groups[g];
         gr.p = p;
         gr.creator = creator;
         gr.startAt = uint64(block.timestamp);
+        _profiles[g] = prof;
+        adminOf[g] = creator;
         emit GroupCreated(g, creator, p);
+        emit GroupProfileUpdated(g, prof.name, prof.purpose, prof.coverId);
         _join(g, creator);
+        emit RoleChanged(g, creator, Role.None, Role.Admin, creator);
     }
 
-    function _createHash(address creator, Params calldata p, uint256 nonce, uint256 deadline)
+    function _createHash(address creator, Params calldata p, Profile calldata prof, uint256 nonce, uint256 deadline)
         internal
         pure
         returns (bytes32)
     {
-        return keccak256(
-            abi.encode(
-                CREATE_TYPEHASH,
-                creator,
-                p.sharePrice,
-                p.socialFundPerMeeting,
-                p.meetingInterval,
-                p.cycleEnd,
-                p.gracePeriod,
-                p.interestBps,
-                p.maxLoanMultipleBps,
-                p.maxSharesPerMeeting,
-                p.approvalsRequired,
-                p.maxMembers,
-                nonce,
-                deadline
-            )
+        // Two halves keep the encoder within stack limits; the result equals one flat abi.encode of all fields.
+        bytes memory head = abi.encode(
+            CREATE_TYPEHASH,
+            creator,
+            p.sharePrice,
+            p.socialFundPerMeeting,
+            p.meetingInterval,
+            p.cycleEnd,
+            p.gracePeriod,
+            p.interestBps,
+            p.maxLoanMultipleBps
         );
+        bytes memory tail = abi.encode(
+            p.maxSharesPerMeeting,
+            p.approvalsRequired,
+            p.maxMembers,
+            p.maxSocialPayout,
+            keccak256(bytes(prof.name)),
+            keccak256(bytes(prof.purpose)),
+            prof.coverId,
+            nonce,
+            deadline
+        );
+        return keccak256(bytes.concat(head, tail));
+    }
+
+    function _checkProfile(string calldata name, string calldata purpose, uint8 coverId) internal pure {
+        uint256 n = bytes(name).length;
+        if (n == 0 || n > MAX_NAME_BYTES || bytes(purpose).length > MAX_PURPOSE_BYTES || coverId >= COVER_COUNT) {
+            revert BadProfile();
+        }
+    }
+
+    // ------------------------------------------------------------------ A1.1 profile, A1.4 roles (Admin only)
+
+    function _onlyAdmin(uint256 g, address a) internal view {
+        if (_groups[g].creator == address(0)) revert BadParams();
+        if (adminOf[g] != a) revert NotAdmin();
+    }
+
+    function updateProfile(
+        address admin,
+        uint256 g,
+        string calldata name,
+        string calldata purpose,
+        uint8 coverId,
+        uint256 nonce,
+        uint256 deadline,
+        bytes calldata sig
+    ) external nonReentrant {
+        _auth(
+            admin,
+            keccak256(
+                abi.encode(
+                    PROFILE_TYPEHASH, admin, g, keccak256(bytes(name)), keccak256(bytes(purpose)), coverId, nonce, deadline
+                )
+            ),
+            nonce,
+            deadline,
+            sig
+        );
+        _onlyAdmin(g, admin);
+        _checkProfile(name, purpose, coverId);
+        _profiles[g] = Profile({name: name, purpose: purpose, coverId: coverId});
+        emit GroupProfileUpdated(g, name, purpose, coverId);
+    }
+
+    /// @notice Admin adds or removes a Treasurer (0..MAX_TREASURERS). The Admin cannot be a Treasurer.
+    function setTreasurer(
+        address admin,
+        uint256 g,
+        address member,
+        bool enabled,
+        uint256 nonce,
+        uint256 deadline,
+        bytes calldata sig
+    ) external nonReentrant {
+        _auth(
+            admin, keccak256(abi.encode(TREASURER_TYPEHASH, admin, g, member, enabled, nonce, deadline)), nonce, deadline, sig
+        );
+        _onlyAdmin(g, admin);
+        if (!members[g][member].joined) revert NotMember();
+        if (member == admin) revert AdminCannotBeTreasurer();
+        if (isTreasurer[g][member] == enabled) revert BadParams();
+        if (enabled) {
+            if (treasurerCount[g] >= MAX_TREASURERS) revert TooManyTreasurers();
+            isTreasurer[g][member] = true;
+            treasurerCount[g] += 1;
+            emit RoleChanged(g, member, Role.Member, Role.Treasurer, admin);
+        } else {
+            isTreasurer[g][member] = false;
+            treasurerCount[g] -= 1;
+            emit RoleChanged(g, member, Role.Treasurer, Role.Member, admin);
+        }
+    }
+
+    /// @notice Hands the Admin role to another member. A Treasurer who becomes Admin stops being a Treasurer.
+    function transferAdmin(
+        address admin,
+        uint256 g,
+        address newAdmin,
+        uint256 nonce,
+        uint256 deadline,
+        bytes calldata sig
+    ) external nonReentrant {
+        _auth(admin, keccak256(abi.encode(TRANSFER_ADMIN_TYPEHASH, admin, g, newAdmin, nonce, deadline)), nonce, deadline, sig);
+        _onlyAdmin(g, admin);
+        if (!members[g][newAdmin].joined || newAdmin == admin) revert BadParams();
+        Role prior = roleOf(g, newAdmin);
+        if (isTreasurer[g][newAdmin]) {
+            isTreasurer[g][newAdmin] = false;
+            treasurerCount[g] -= 1;
+        }
+        adminOf[g] = newAdmin;
+        emit RoleChanged(g, admin, Role.Admin, Role.Member, admin);
+        emit RoleChanged(g, newAdmin, prior, Role.Admin, admin);
+    }
+
+    /// @notice Removes a member who holds no shares, no open loan and no pledge (never the Admin, never after Share-Out
+    /// starts). Nothing of value leaves the group.
+    function removeMember(
+        address admin,
+        uint256 g,
+        address member,
+        uint256 nonce,
+        uint256 deadline,
+        bytes calldata sig
+    ) external nonReentrant {
+        _auth(admin, keccak256(abi.encode(REMOVE_TYPEHASH, admin, g, member, nonce, deadline)), nonce, deadline, sig);
+        _onlyAdmin(g, admin);
+        Member storage m = members[g][member];
+        if (!m.joined) revert NotMember();
+        if (member == admin || m.shares != 0 || m.activeLoan != 0 || m.pledged != 0 || _groups[g].shareOutStarted) {
+            revert NotRemovable();
+        }
+        Role prior = roleOf(g, member);
+        if (isTreasurer[g][member]) {
+            isTreasurer[g][member] = false;
+            treasurerCount[g] -= 1;
+        }
+        delete members[g][member];
+        uint256 idx = _memberIndex[g][member] - 1;
+        address[] storage list = _memberList[g];
+        address last = list[list.length - 1];
+        list[idx] = last;
+        _memberIndex[g][last] = idx + 1;
+        list.pop();
+        delete _memberIndex[g][member];
+        _groups[g].memberCount -= 1;
+        emit RoleChanged(g, member, prior, Role.None, admin);
+        emit MemberRemoved(g, member, admin);
     }
 
     function join(address member, uint256 g, uint256 nonce, uint256 deadline, bytes calldata sig) external nonReentrant {
@@ -317,6 +537,7 @@ contract GroupKitty is SigAuth, ReentrancyGuard {
         members[g][m].joined = true;
         gr.memberCount += 1;
         _memberList[g].push(m);
+        _memberIndex[g][m] = _memberList[g].length;
         emit MemberJoined(g, m);
     }
 
@@ -331,10 +552,14 @@ contract GroupKitty is SigAuth, ReentrancyGuard {
     }
 
     /// @notice Autosave into a group. `amount` must equal shares x sharePrice + social fund due this meeting.
+    /// A1.3: at most one purchase per member per meeting window through Autosave. If the member already bought in this
+    /// window (by hand or by an earlier run), the run reverts, so the vault's whole run reverts: nothing is pulled and
+    /// the mandate's run is not used up. The next window runs normally.
     function contributeFor(uint256 g, address member, uint256 amount) external nonReentrant {
         if (msg.sender != vault) revert NotVault();
         Group storage gr = _groups[g];
         uint256 m = meetingIndex(g);
+        if (sharesInMeeting[g][member][m] != 0) revert AlreadyContributed();
         uint256 social = socialPaid[g][member][m] ? 0 : gr.p.socialFundPerMeeting;
         if (amount <= social || (amount - social) % gr.p.sharePrice != 0) revert BadParams();
         _buy(g, member, (amount - social) / gr.p.sharePrice, msg.sender);
@@ -592,45 +817,84 @@ contract GroupKitty is SigAuth, ReentrancyGuard {
         }
     }
 
-    // ------------------------------------------------------------------ social fund grants
+    // ------------------------------------------------------------------ A1.5 social fund payments
 
-    function requestGrant(address member, uint256 g, uint256 amount, uint256 nonce, uint256 deadline, bytes calldata sig)
-        external
-        nonReentrant
-        returns (uint256 id)
-    {
-        _auth(member, keccak256(abi.encode(GRANT_TYPEHASH, member, g, amount, nonce, deadline)), nonce, deadline, sig);
-        if (!members[g][member].joined) revert NotMember();
-        if (_groups[g].shareOutStarted) revert ShareOutStarted();
-        if (amount == 0 || amount > _groups[g].socialFund) revert BadParams();
-        id = ++grantCount;
-        grants[id] = Grant({member: member, groupId: g, amount: amount, approvals: 0, paid: false});
-        emit GrantRequested(id, g, member, amount);
+    /// @notice Any member proposes a payment from the social fund (for emergencies) to a current member.
+    /// Never from the main pool, never to an outside address. Expires after PAYOUT_TTL or at cycle end, whichever is first.
+    function proposeSocialPayout(
+        address proposer,
+        uint256 g,
+        address recipient,
+        uint256 amount,
+        string calldata reason,
+        uint256 nonce,
+        uint256 deadline,
+        bytes calldata sig
+    ) external nonReentrant returns (uint256 id) {
+        _auth(
+            proposer,
+            keccak256(abi.encode(PROPOSE_TYPEHASH, proposer, g, recipient, amount, keccak256(bytes(reason)), nonce, deadline)),
+            nonce,
+            deadline,
+            sig
+        );
+        Group storage gr = _groups[g];
+        if (!members[g][proposer].joined || !members[g][recipient].joined) revert NotMember();
+        if (gr.shareOutStarted) revert ShareOutStarted();
+        uint256 r = bytes(reason).length;
+        if (r == 0 || r > MAX_REASON_BYTES) revert BadProfile();
+        if (amount == 0 || amount > gr.socialFund) revert BadParams();
+        if (gr.p.maxSocialPayout != 0 && amount > gr.p.maxSocialPayout) revert BadParams();
+        uint64 expiresAt = uint64(Math.min(block.timestamp + PAYOUT_TTL, gr.p.cycleEnd));
+        id = ++payoutCount;
+        Payout storage po = _payouts[id];
+        po.groupId = g;
+        po.proposer = proposer;
+        po.recipient = recipient;
+        po.amount = amount;
+        po.expiresAt = expiresAt;
+        po.reason = reason;
+        emit SocialPayoutProposed(id, g, proposer, recipient, amount, expiresAt, reason);
     }
 
-    /// @notice Pays automatically once `approvalsRequired` other members approve.
-    function approveGrant(address member, uint256 id, uint256 nonce, uint256 deadline, bytes calldata sig)
+    /// @notice Approval by a member other than the proposer and the recipient. A Treasurer's approval (or the Admin's,
+    /// while the group has no Treasurer) is required before execution.
+    function approveSocialPayout(address member, uint256 id, uint256 nonce, uint256 deadline, bytes calldata sig)
         external
         nonReentrant
     {
-        _auth(member, keccak256(abi.encode(GRANT_APPROVE_TYPEHASH, member, id, nonce, deadline)), nonce, deadline, sig);
-        Grant storage gt = grants[id];
-        if (gt.member == address(0) || gt.paid) revert BadParams();
-        Group storage gr = _groups[gt.groupId];
-        if (!members[gt.groupId][member].joined) revert NotMember();
-        if (member == gt.member) revert SelfApproval();
-        if (grantApprovedBy[id][member]) revert AlreadyApproved();
+        _auth(member, keccak256(abi.encode(PAYOUT_APPROVE_TYPEHASH, member, id, nonce, deadline)), nonce, deadline, sig);
+        Payout storage po = _payouts[id];
+        uint256 g = po.groupId;
+        if (po.proposer == address(0) || po.executed) revert BadParams();
+        if (block.timestamp > po.expiresAt) revert PayoutExpired();
+        if (!members[g][member].joined) revert NotMember();
+        if (member == po.proposer || member == po.recipient) revert SelfApproval();
+        if (payoutApprovedBy[id][member]) revert AlreadyApproved();
+        payoutApprovedBy[id][member] = true;
+        po.approvals += 1;
+        bool asTreasurer = isTreasurer[g][member];
+        if (asTreasurer) po.treasurerApproved = true;
+        if (adminOf[g] == member) po.adminApproved = true;
+        emit SocialPayoutApproved(id, member, po.approvals, asTreasurer);
+    }
+
+    /// @notice Pays an approved proposal from the social fund. Anyone may call; all rules are checked here.
+    function executeSocialPayout(uint256 id) external nonReentrant {
+        Payout storage po = _payouts[id];
+        uint256 g = po.groupId;
+        Group storage gr = _groups[g];
+        if (po.proposer == address(0) || po.executed) revert BadParams();
+        if (block.timestamp > po.expiresAt) revert PayoutExpired();
         if (gr.shareOutStarted) revert ShareOutStarted();
-        grantApprovedBy[id][member] = true;
-        gt.approvals += 1;
-        emit GrantApproved(id, member, gt.approvals);
-        if (gt.approvals >= gr.p.approvalsRequired) {
-            if (gr.socialFund < gt.amount) revert NoLiquidity();
-            gt.paid = true;
-            gr.socialFund -= gt.amount;
-            emit GrantPaid(id, gt.amount);
-            asset.safeTransfer(gt.member, gt.amount);
-        }
+        if (!members[g][po.recipient].joined) revert NotMember();
+        bool officer = po.treasurerApproved || (treasurerCount[g] == 0 && po.adminApproved);
+        if (po.approvals < gr.p.approvalsRequired || !officer) revert PayoutNotReady();
+        if (gr.socialFund < po.amount) revert NoLiquidity();
+        po.executed = true;
+        gr.socialFund -= po.amount;
+        emit SocialPayoutExecuted(id, g, po.recipient, po.amount);
+        asset.safeTransfer(po.recipient, po.amount);
     }
 
     // ------------------------------------------------------------------ Share-Out

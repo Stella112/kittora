@@ -17,6 +17,9 @@ export interface GroupView {
   nextMeetingAt: bigint
   cycleEnd: bigint
   shareOutOpen: boolean
+  name: string
+  purpose: string
+  coverId: number
 }
 export interface BondView { id: bigint, pocketId: bigint, nimiqAddress: `0x${string}`, unlockAt: bigint, nimLuna: bigint, groupId: bigint, status: number, assets: bigint }
 export interface MandateView { id: bigint, amountPerRun: bigint, interval: bigint, maxRuns: number, runs: number, expiry: bigint, lastRun: bigint, toGroup: boolean, revoked: boolean, destId: bigint }
@@ -38,16 +41,17 @@ export async function loadPortfolio(evm: Address): Promise<Portfolio> {
   const now = BigInt(Math.floor(Date.now() / 1000))
   const groups = await Promise.all(ids.groupIds.map(async (s) => {
     const id = BigInt(s)
-    const [m, params, state] = await Promise.all([
+    const [m, params, state, prof] = await Promise.all([
       r.readContract({ address: gk, abi: gkAbi, functionName: 'members', args: [id, evm] }) as Promise<readonly [boolean, boolean, bigint, bigint, bigint]>,
       r.readContract({ address: gk, abi: gkAbi, functionName: 'groupParams', args: [id] }) as Promise<{ meetingInterval: bigint, cycleEnd: bigint }>,
       r.readContract({ address: gk, abi: gkAbi, functionName: 'groupState', args: [id] }) as Promise<readonly [Address, bigint, number, number, bigint, bigint, bigint, bigint, boolean]>,
+      r.readContract({ address: gk, abi: gkAbi, functionName: 'profile', args: [id] }) as Promise<{ name: string, purpose: string, coverId: number }>,
     ])
     const value = await r.readContract({ address: gk, abi: gkAbi, functionName: 'valueOfShares', args: [id, m[2]] }) as bigint
     const startAt = state[1]
     const interval = params.meetingInterval
     const idx = now > startAt ? (now - startAt) / interval : 0n
-    return { id, shares: m[2], value, nextMeetingAt: startAt + (idx + 1n) * interval, cycleEnd: params.cycleEnd, shareOutOpen: now >= params.cycleEnd }
+    return { id, shares: m[2], value, nextMeetingAt: startAt + (idx + 1n) * interval, cycleEnd: params.cycleEnd, shareOutOpen: now >= params.cycleEnd, name: prof.name || `Group #${id}`, purpose: prof.purpose, coverId: Number(prof.coverId) }
   }))
   const bonds = await Promise.all(ids.bondIds.map(async (s) => {
     const id = BigInt(s)

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Address } from 'viem'
-import { defaultableAt, dueAt, groupName, loanCheck, loanReady, LoanStatus, same, short, valueOf, type GroupDetail, type LoanView } from '../../lib/group.ts'
+import { defaultableAt, dueAt, loanCheck, loanReady, LoanStatus, same, short, valueOf, type GroupDetail, type LoanView } from '../../lib/group.ts'
 import { deadline, groupNonce, relayOpen, signAndRelayGroup, usdtBalance, GROUP } from '../../lib/chainActions.ts'
 import { parseUsdt } from '../../lib/amounts.ts'
 import { approveStep } from '../../lib/steps.ts'
@@ -8,7 +8,7 @@ import { makeError } from '../../lib/errors.ts'
 import { Button, Card, ErrorPanel, usdt } from '../../components/ui.tsx'
 import { Field } from '../save/NewPocket.tsx'
 import { durationLabel } from './NewGroup.tsx'
-import type { Start } from './Group.tsx'
+import type { Flow, Start } from './Group.tsx'
 
 const DURATIONS = [3600, 86400, 604800, 1209600, 2592000] as const
 const STATUS: Record<LoanStatus, [string, string]> = {
@@ -20,6 +20,38 @@ const STATUS: Record<LoanStatus, [string, string]> = {
   [LoanStatus.Cancelled]: ['Cancelled', 'bg-canvas text-muted'],
 }
 const fmtDate = (s: bigint) => new Date(Number(s) * 1000).toLocaleString()
+
+/** Approve (or guarantee) a requested loan. Returns the flow, or a reason it is not possible. `guarantor` flows move
+ * savings into risk, so callers gate them behind the disclosure. */
+export function loanApproveFlow(evm: Address, g: GroupDetail, l: LoanView): { flow: Flow, guarantor: boolean } | { error: string } {
+  const me = g.me!
+  const gi = l.guarantors.findIndex(a => same(a, evm))
+  const pledge = gi >= 0 ? l.pledges[gi] : 0n
+  if (gi >= 0 && me.activeLoan !== 0n) return { error: 'You have an open loan yourself, so you cannot guarantee another one until it is repaid.' }
+  if (gi >= 0 && me.shares - me.pledged < pledge) return { error: `You need ${pledge} free shares to guarantee this loan.` }
+  return {
+    guarantor: gi >= 0,
+    flow: {
+      summary: {
+        what: gi >= 0 ? `Guarantee loan #${l.id} and pledge ${pledge} of your shares` : `Approve loan #${l.id} for ${short(l.borrower)}`,
+        amount: `${usdt(l.principal)} USDT loan`, chain: 'Polygon',
+        extra: gi >= 0
+          ? [['Your pledge', `${pledge} shares (worth ${usdt(valueOf(g, pledge))} USDT now)`], ['If it defaults', 'The unpaid part is cut from the borrower first, then from pledged shares']]
+          : [['Your money', 'Not touched']],
+      },
+      steps: [{ label: gi >= 0 ? 'Guarantee the loan' : 'Approve the loan', chain: 'polygon', run: async () => signAndRelayGroup('group.approveLoan', 'ApproveLoan', evm, { member: evm, loanId: l.id, nonce: await groupNonce(evm), deadline: deadline() }) }],
+    },
+  }
+}
+
+export function loanPayoutFlow(evm: Address, g: GroupDetail, l: LoanView): Flow | { error: string } {
+  if (g.cash < l.principal) return { error: `The pool has ${usdt(g.cash)} USDT free right now. The loan can be paid out once members save more or other loans are repaid.` }
+  const mine = same(l.borrower, evm)
+  return {
+    summary: { what: `Pay out loan #${l.id} to ${mine ? 'you' : short(l.borrower)}`, amount: `${usdt(l.principal)} USDT`, chain: 'Polygon', extra: [['Due', `${durationLabel(l.duration)} after pay-out`], ['To repay', `${usdt(l.principal + l.interest)} USDT`]] },
+    steps: [{ label: 'Pay out the loan', chain: 'polygon', signs: false, run: () => relayOpen('group.disburse', l.id) }],
+  }
+}
 
 export function LoansSection({ evm, g, start, startNoMoney }: { evm: Address, g: GroupDetail, start: Start, startNoMoney: Start }) {
   const open = g.loans.filter(l => l.status === LoanStatus.Requested || l.status === LoanStatus.Disbursed)
@@ -58,29 +90,16 @@ function LoanCard({ evm, g, l, start, startNoMoney }: { evm: Address, g: GroupDe
   const label = mine ? 'Your loan' : `Loan for ${short(l.borrower)}`
 
   function approve() {
-    const pledge = gi >= 0 ? l.pledges[gi] : 0n
-    if (gi >= 0 && me.activeLoan !== 0n) return setErr('You have an open loan yourself, so you cannot guarantee another one until it is repaid.')
-    if (gi >= 0 && me.shares - me.pledged < pledge) return setErr(`You need ${pledge} free shares to guarantee this loan.`)
-    const f = {
-      summary: {
-        what: gi >= 0 ? `Guarantee loan #${l.id} and pledge ${pledge} of your shares` : `Approve loan #${l.id} for ${short(l.borrower)}`,
-        amount: `${usdt(l.principal)} USDT loan`, chain: 'Polygon',
-        extra: gi >= 0
-          ? [['Your pledge', `${pledge} shares (worth ${usdt(valueOf(g, pledge))} USDT now)`] as [string, string], ['If it defaults', 'The unpaid part is cut from the borrower first, then from pledged shares'] as [string, string]]
-          : [['Your money', 'Not touched'] as [string, string]],
-      },
-      steps: [{ label: gi >= 0 ? 'Guarantee the loan' : 'Approve the loan', chain: 'polygon' as const, run: async () => signAndRelayGroup('group.approveLoan', 'ApproveLoan', evm, { member: evm, loanId: l.id, nonce: await groupNonce(evm), deadline: deadline() }) }],
-    }
+    const r = loanApproveFlow(evm, g, l)
+    if ('error' in r) return setErr(r.error)
     // a guarantor puts savings at risk: show the disclosure first
-    ;(gi >= 0 ? start : startNoMoney)(f)
+    ;(r.guarantor ? start : startNoMoney)(r.flow)
   }
 
   function payOut() {
-    if (g.cash < l.principal) return setErr(`The pool has ${usdt(g.cash)} USDT free right now. The loan can be paid out once members save more or other loans are repaid.`)
-    startNoMoney({
-      summary: { what: `Pay out loan #${l.id} to ${mine ? 'you' : short(l.borrower)}`, amount: `${usdt(l.principal)} USDT`, chain: 'Polygon', extra: [['Due', `${durationLabel(l.duration)} after pay-out`], ['To repay', `${usdt(l.principal + l.interest)} USDT`]] },
-      steps: [{ label: 'Pay out the loan', chain: 'polygon', signs: false, run: () => relayOpen('group.disburse', l.id) }],
-    })
+    const r = loanPayoutFlow(evm, g, l)
+    if (r && 'error' in r) return setErr(r.error)
+    startNoMoney(r)
   }
 
   function cancel() {
@@ -196,7 +215,7 @@ function RequestLoanCard({ evm, g, start }: { evm: Address, g: GroupDetail, star
     const interest = (principal * BigInt(g.p.interestBps)) / 10_000n
     start({
       summary: {
-        what: `Ask ${groupName(g.id)} for a loan`, amount: `${usdt(principal)} USDT`, chain: 'Polygon',
+        what: `Ask ${g.profile.name} for a loan`, amount: `${usdt(principal)} USDT`, chain: 'Polygon',
         extra: [
           ['Interest', `${usdt(interest)} USDT (${g.p.interestBps / 100}% flat)`],
           ['You repay', `${usdt(principal + interest)} USDT within ${durationLabel(BigInt(duration))} of pay-out`],

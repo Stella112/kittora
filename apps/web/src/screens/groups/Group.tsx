@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Address } from 'viem'
-import { useGroup, groupName, setGroupName, same, short, type GroupDetail } from '../../lib/group.ts'
+import { useGroup, useGroupFeed, Role, same, short, type GroupDetail } from '../../lib/group.ts'
+import { buildGroupFeed } from '../../lib/groupFeed.ts'
+import { cover, coverStyle } from '../../lib/covers.ts'
 import { usePortfolio, type Portfolio } from '../../lib/portfolio.ts'
 import { deadline, groupNonce, signAndRelayGroup, signAndRelayVault, usdtBalance, vaultNonce, GROUP } from '../../lib/chainActions.ts'
 import { approveStep, revokeMandateSteps } from '../../lib/steps.ts'
@@ -17,11 +19,18 @@ import { disclosureAccepted } from '../Disclosure.tsx'
 import { countdown, useNow } from '../Home.tsx'
 import { durationLabel, intervalLabel } from './NewGroup.tsx'
 import { LoansSection } from './Loans.tsx'
-import { GrantsCard } from './Grants.tsx'
+import { SocialFundCard } from './SocialFund.tsx'
+import { MembersTab, RolePill } from './Members.tsx'
+import { GroupFeedView } from './GroupFeedView.tsx'
+import { Pinned } from './Pinned.tsx'
+import { AdminPanel } from './AdminPanel.tsx'
 
 export type Flow = { summary: Summary, steps: TxStep[] } | null
 export type Start = (f: Flow) => void
 const POOL_CAP = 500_000_000n
+/** On-chain profile name (A1.1); plain text, rendered by React (never as HTML). */
+export const gname = (g: Pick<GroupDetail, 'profile' | 'id'>) => g.profile.name || `Group #${g.id}`
+type Tab = 'group' | 'members' | 'activity' | 'admin'
 
 export function Group() {
   return <div className="space-y-4 pt-2"><RequireEvm>{evm => <GroupBody evm={evm} />}</RequireEvm></div>
@@ -36,12 +45,12 @@ function GroupBody({ evm }: { evm: Address }) {
   const pf = usePortfolio(evm)
   const qc = useQueryClient()
   const [flow, setFlow] = useState<Flow>(null)
-  const nameParam = search.get('name')
-  useEffect(() => { if (id && nameParam && groupName(id) === `Group #${id}`) setGroupName(id, nameParam) }, [id, nameParam])
+  const [tab, setTab] = useState<Tab>('group')
+  const feedQ = useGroupFeed(id)
 
   const done = async () => {
     setFlow(null)
-    await Promise.all([qc.invalidateQueries({ queryKey: ['group'] }), qc.invalidateQueries({ queryKey: ['portfolio'] })])
+    await Promise.all([qc.invalidateQueries({ queryKey: ['group'] }), qc.invalidateQueries({ queryKey: ['groupFeed'] }), qc.invalidateQueries({ queryKey: ['portfolio'] })])
   }
   // Money actions need the disclosure first (brief §4.1 item 7); joining and approving do not move the signer's money.
   const start: Start = f => (disclosureAccepted() ? setFlow(f) : nav(`/disclosure?next=/groups/${id}`))
@@ -57,19 +66,50 @@ function GroupBody({ evm }: { evm: Address }) {
   if (!g.me) return <>{back}<JoinCard evm={evm} g={g} start={setFlow} /></>
 
   const ended = g.now >= g.p.cycleEnd
+  const feed = feedQ.data?.items ?? []
+  const rows = buildGroupFeed(feed, g, g.approvers)
+  const isAdmin = g.me.role === Role.Admin
+  const tabs: [Tab, string][] = [['group', 'Group'], ['members', 'Members'], ['activity', 'Activity'], ...(isAdmin ? [['admin', 'Admin'] as [Tab, string]] : [])]
   return (
     <>
       {back}
       <Header g={g} evm={evm} />
-      <InviteCard g={g} open={search.get('invite') === '1'} />
-      {ended && <ShareOutCard evm={evm} g={g} pf={pf.data} start={start} />}
-      {!ended && <BuyCard evm={evm} g={g} start={start} />}
-      <Board g={g} evm={evm} />
-      <LoansSection evm={evm} g={g} start={start} startNoMoney={setFlow} />
-      <GrantsCard evm={evm} g={g} startNoMoney={setFlow} />
-      {!ended && <GroupAutosave evm={evm} g={g} pf={pf.data} start={start} />}
-      <Rules g={g} />
+      <MissedNotice g={g} evm={evm} />
+      <Pinned g={g} evm={evm} start={start} startNoMoney={setFlow} />
+      <nav className="grid gap-1 rounded-2xl bg-brand-soft p-1" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }} aria-label="Group sections">
+        {tabs.map(([t, label]) => (
+          <button key={t} type="button" onClick={() => setTab(t)} aria-pressed={tab === t}
+            className={`min-h-10 rounded-xl text-sm font-semibold ${tab === t ? 'bg-surface text-ink shadow-sm' : 'text-brand-strong'}`}>{label}</button>
+        ))}
+      </nav>
+      {tab === 'group' && (
+        <>
+          <InviteCard g={g} open={search.get('invite') === '1'} />
+          {ended && <ShareOutCard evm={evm} g={g} pf={pf.data} start={start} />}
+          {!ended && <BuyCard evm={evm} g={g} start={start} />}
+          <Board g={g} evm={evm} />
+          <LoansSection evm={evm} g={g} start={start} startNoMoney={setFlow} />
+          <SocialFundCard evm={evm} g={g} startNoMoney={setFlow} />
+          {!ended && <GroupAutosave evm={evm} g={g} pf={pf.data} start={start} />}
+          <Rules g={g} />
+        </>
+      )}
+      {tab === 'members' && <MembersTab g={g} evm={evm} feed={feed} />}
+      {tab === 'activity' && <GroupFeedView rows={rows} evm={evm} loading={feedQ.isLoading} onStart={() => setTab('group')} />}
+      {tab === 'admin' && isAdmin && <AdminPanel g={g} evm={evm} startNoMoney={setFlow} />}
     </>
+  )
+}
+
+/** A1.3: tell me when my Autosave missed this or the previous meeting. */
+function MissedNotice({ g, evm }: { g: GroupDetail, evm: Address }) {
+  const miss = g.autosaveWindows.find(w => w.status === 'failed' && same(w.member, evm) && w.windowIdx >= Number(g.meeting) - 1)
+  if (!miss) return null
+  return (
+    <div role="alert" className="rounded-2xl bg-bad-soft p-4 text-sm">
+      <p className="font-semibold text-bad">Missed contribution: meeting {miss.windowIdx + 1}</p>
+      <p className="mt-1 text-ink">{miss.reason ?? 'Your Autosave could not buy your shares.'} Buy by hand below, or fix it before the next meeting.</p>
+    </div>
   )
 }
 
@@ -79,10 +119,13 @@ function Header({ g, evm }: { g: GroupDetail, evm: Address }) {
   const me = g.me!
   const myValue = g.totalShares === 0n ? me.shares * g.p.sharePrice : (me.shares * (g.cash + g.outstanding)) / g.totalShares
   return (
-    <Card className="bg-gradient-to-br from-brand to-brand-strong text-white">
+    <Card className="!bg-none" >
+      <div className="-m-5 rounded-3xl p-5" style={coverStyle(g.profile.coverId)}>
       <div className="flex items-start justify-between gap-2">
-        <div>
-          <p className="text-sm opacity-90">{groupName(g.id)}{same(g.creator, evm) ? ' · you started it' : ''}</p>
+        <div className="min-w-0">
+          <p className="break-words text-lg font-extrabold leading-tight">{gname(g)}<RolePill role={g.me!.role} /></p>
+          {g.profile.purpose && <p className="break-words text-sm" style={{ color: cover(g.profile.coverId).sub }}>{g.profile.purpose}</p>}
+          {same(g.creator, evm) && <p className="text-xs" style={{ color: cover(g.profile.coverId).sub }}>You started it</p>}
           <p className="tabular mt-1 text-4xl font-extrabold">{usdt(myValue)} <span className="text-lg">USDT</span></p>
           <p className="text-sm opacity-90">your {me.shares.toString()} share{me.shares === 1n ? '' : 's'}{me.pledged > 0n ? ` (${me.pledged} pledged as guarantor)` : ''}</p>
         </div>
@@ -98,15 +141,13 @@ function Header({ g, evm }: { g: GroupDetail, evm: Address }) {
         <div><dt className="opacity-90">Members</dt><dd className="tabular font-bold">{g.memberCount}/{g.p.maxMembers}</dd></div>
       </dl>
       <p className="mt-2 text-xs opacity-90">1 share is worth {usdt(g.shareValue)} USDT now (paid {usdt(g.p.sharePrice)}). Interest repaid on loans raises it for everyone.</p>
+      </div>
     </Card>
   )
 }
 
 function inviteUrl(g: GroupDetail) {
-  const name = groupName(g.id)
-  const u = new URL(`/groups/${g.id}`, config.publicUrl)
-  if (name !== `Group #${g.id}`) u.searchParams.set('name', name)
-  return openInNimiqPayLinks(u.toString()).universal
+  return openInNimiqPayLinks(new URL(`/groups/${g.id}`, config.publicUrl).toString()).universal
 }
 
 function InviteCard({ g, open }: { g: GroupDetail, open: boolean }) {
@@ -116,7 +157,7 @@ function InviteCard({ g, open }: { g: GroupDetail, open: boolean }) {
   if (full) return null
   const url = inviteUrl(g)
   async function share() {
-    const text = `Join ${groupName(g.id)} on Kittora (group #${g.id})`
+    const text = `Join ${gname(g)} on Kittora (group #${g.id})`
     try {
       if (navigator.share) { await navigator.share({ title: 'Kittora', text, url }); return }
     } catch { /* fall back to copy */ }
@@ -145,15 +186,18 @@ function JoinCard({ evm, g, start }: { evm: Address, g: GroupDetail, start: Star
     : g.memberCount >= g.p.maxMembers ? 'This group is full.' : null
   function join() {
     start({
-      summary: { what: `Join ${groupName(g.id)}`, chain: 'Polygon', extra: [['Costs', 'Nothing now. You buy shares at meetings.']] },
+      summary: { what: `Join ${gname(g)}`, chain: 'Polygon', extra: [['Costs', 'Nothing now. You buy shares at meetings.']] },
       steps: [{ label: 'Join the group', chain: 'polygon', run: async () => signAndRelayGroup('group.join', 'JoinGroup', evm, { member: evm, groupId: g.id, nonce: await groupNonce(evm), deadline: deadline() }) }],
     })
   }
   return (
     <>
-      <Card className="space-y-2">
-        <p className="text-sm text-muted">You are invited to</p>
-        <h1 className="text-2xl font-bold">{groupName(g.id)}</h1>
+      <Card className="space-y-2" >
+        <div className="-m-5 mb-0 rounded-3xl p-5" style={coverStyle(g.profile.coverId)}>
+          <p className="text-sm" style={{ color: cover(g.profile.coverId).sub }}>You are invited to</p>
+          <h1 className="break-words text-2xl font-bold">{gname(g)}</h1>
+          {g.profile.purpose && <p className="break-words text-sm" style={{ color: cover(g.profile.coverId).sub }}>{g.profile.purpose}</p>}
+        </div>
         <p className="text-sm text-muted">Group #{g.id.toString()} · {g.memberCount} of {g.p.maxMembers} members · started by {short(g.creator)}</p>
       </Card>
       <Rules g={g} />
@@ -199,7 +243,7 @@ function BuyCard({ evm, g, start }: { evm: Address, g: GroupDetail, start: Start
     if (bal !== null && bal < cost) return setErr(`This costs ${usdt(cost)} USDT and you have ${usdt(bal)} USDT on Polygon.`)
     start({
       summary: {
-        what: `Buy ${n} share${n === 1 ? '' : 's'} in ${groupName(g.id)}`, amount: `${usdt(cost)} USDT`, chain: 'Polygon',
+        what: `Buy ${n} share${n === 1 ? '' : 's'} in ${gname(g)}`, amount: `${usdt(cost)} USDT`, chain: 'Polygon',
         extra: [['Shares', `${n} × ${usdt(g.p.sharePrice)} USDT`], ...(social > 0n ? [['Social fund', `${usdt(social)} USDT (once per meeting)`] as [string, string]] : []), ['Meeting', `${Number(g.meeting) + 1} of ${g.totalMeetings}`]],
       },
       steps: [
@@ -293,7 +337,7 @@ function GroupAutosave({ evm, g, pf, start }: { evm: Address, g: GroupDetail, pf
     const total = perRun * BigInt(runs)
     start({
       summary: {
-        what: `Autosave into ${groupName(g.id)}: ${n} share${n === 1 ? '' : 's'} every meeting`, amount: `${usdt(perRun)} USDT × up to ${runs} meetings = ${usdt(total)} USDT max`, chain: 'Polygon',
+        what: `Autosave into ${gname(g)}: ${n} share${n === 1 ? '' : 's'} every meeting`, amount: `${usdt(perRun)} USDT × up to ${runs} meetings = ${usdt(total)} USDT max`, chain: 'Polygon',
         extra: [['How often', intervalLabel(g.p.meetingInterval)], ['Each run', `${n} × ${usdt(g.p.sharePrice)} shares + ${usdt(g.p.socialFundPerMeeting)} social fund`], ['Stops', 'At Share-Out, or anytime you cancel']],
       },
       steps: [
@@ -349,7 +393,7 @@ function ShareOutCard({ evm, g, pf, start }: { evm: Address, g: GroupDetail, pf:
     const rollId = BigInt(dest)
     start({
       summary: {
-        what: `Claim your Share-Out from ${groupName(g.id)}`, amount: estimate !== null ? `about ${usdt(estimate)} USDT` : undefined, chain: 'Polygon',
+        what: `Claim your Share-Out from ${gname(g)}`, amount: estimate !== null ? `about ${usdt(estimate)} USDT` : undefined, chain: 'Polygon',
         extra: [['To', rollId === 0n ? 'Your wallet' : `Your pocket ${pocketName(rollId, pockets.find(p => p.id === rollId)?.kind ?? 0)}`], ['Made of', 'Your part of the pool (savings + interest) + an equal part of the social fund']],
       },
       steps: [{ label: 'Claim Share-Out', chain: 'polygon', run: async () => signAndRelayGroup('group.claimShareOut', 'ClaimShareOut', evm, { member: evm, groupId: g.id, rollPocketId: rollId, nonce: await groupNonce(evm), deadline: deadline() }) }],

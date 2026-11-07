@@ -1,6 +1,6 @@
 // Gate 2 integration tests: relayer policy, gasless flow, nonce queue, scheduler idempotency, watcher + attester.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { encodeFunctionData, parseAbi, type Address, type Hex } from 'viem'
+import { encodeFunctionData, parseAbi, type Abi, type Address, type Hex } from 'viem'
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from 'viem/accounts'
 import { KeyPair } from '@nimiq/core'
 import { vaultTyped, groupTyped, usdtMetaTxTyped, linkMessage, linkHash, PocketVaultAbi, GroupKittyAbi } from '@kittora/core'
@@ -8,6 +8,7 @@ import { startFork, fundUsdt, ANVIL_KEYS, USDT } from './fork.ts'
 import { build } from '../src/app.ts'
 import { loadConfig } from '../src/config.ts'
 import { schedulerTick } from '../src/scheduler.ts'
+import { settleRelays } from '../src/app.ts'
 import { watcherTick } from '../src/watcher.ts'
 import { nimiqMessageHash, nimiqToBytes20, NimiqRpc } from '../src/nimiq.ts'
 import { openDb } from '../src/db.ts'
@@ -190,7 +191,7 @@ describe('nonce queue under concurrency', () => {
     const now = BigInt(Math.floor(Date.now() / 1000))
     const msg = {
       creator: creator.address, sharePrice: 1_000_000n, socialFundPerMeeting: 200_000n, meetingInterval: 86_400n, cycleEnd: now + 30n * 86_400n,
-      gracePeriod: 172_800n, interestBps: 1000, maxLoanMultipleBps: 30000, maxSharesPerMeeting: 5, approvalsRequired: 2, maxMembers: 10, nonce: n, deadline: BigInt(DL()),
+      gracePeriod: 172_800n, interestBps: 1000, maxLoanMultipleBps: 30000, maxSharesPerMeeting: 5, approvalsRequired: 2, maxMembers: 10, maxSocialPayout: 0n, name: 'Concurrency', purpose: '', coverId: 0, nonce: n, deadline: BigInt(DL()),
     }
     const sig = await signGroup(creator, 'CreateGroup', msg)
     const params = Object.fromEntries(Object.entries(msg).map(([k, v]) => [k, typeof v === 'bigint' ? String(v) : v]))
@@ -337,12 +338,13 @@ describe('Group Kitty cycle through the relayer + group/activity index (Phase 5)
       return rc
     }
     const gn = (u: PrivateKeyAccount) => nonceOf(f.group, u.address)
-    const gkRead = (fn: string, args: unknown[]) => f.pub.readContract({ address: f.group, abi: GroupKittyAbi, functionName: fn as any, args: args as any }) as Promise<any>
+    const gkRead = (fn: string, args: unknown[]) => (f.pub.readContract as any)({ address: f.group, abi: GroupKittyAbi as Abi, functionName: fn, args }) as Promise<any>
 
     const start = await chainTs()
     await send(A, 'group.createGroup', 'CreateGroup', {
       creator: A.address, sharePrice: 1_000_000n, socialFundPerMeeting: 200_000n, meetingInterval: 3600n, cycleEnd: start + 5n * 3600n,
-      gracePeriod: 600n, interestBps: 1000, maxLoanMultipleBps: 30000, maxSharesPerMeeting: 5, approvalsRequired: 1, maxMembers: 5, nonce: await gn(A), deadline: await dl(),
+      gracePeriod: 600n, interestBps: 1000, maxLoanMultipleBps: 30000, maxSharesPerMeeting: 5, approvalsRequired: 1, maxMembers: 5,
+      maxSocialPayout: 500_000n, name: 'Night Market', purpose: 'Traders, Yaba', coverId: 2, nonce: await gn(A), deadline: await dl(),
     })
     const g = await gkRead('groupCount', [])
     for (const u of [B, C]) await send(u, 'group.join', 'JoinGroup', { member: u.address, groupId: g, nonce: await gn(u), deadline: await dl() })
@@ -363,36 +365,106 @@ describe('Group Kitty cycle through the relayer + group/activity index (Phase 5)
     expect((await gkRead('loan', [loanId])).status).toBe(3) // Repaid
     expect((await gkRead('members', [g, C.address]))[3]).toBe(0n) // pledge released
 
-    // Social fund grant: A asks 0.3 of 0.6, B approves (1 approval required) → paid.
-    await send(A, 'group.requestGrant', 'RequestGrant', { member: A.address, groupId: g, amount: 300_000n, nonce: await gn(A), deadline: await dl() })
-    const grantId = await gkRead('grantCount', [])
-    await send(B, 'group.approveGrant', 'ApproveGrant', { member: B.address, grantId, nonce: await gn(B), deadline: await dl() })
-    expect((await gkRead('grants', [grantId]))[4]).toBe(true)
+    // A1.1 profile + A1.4 roles through the relayer
+    expect((await gkRead('profile', [g])).name).toBe('Night Market')
+    await send(A, 'group.updateProfile', 'UpdateProfile', { admin: A.address, groupId: g, name: 'Night Market Kitty', purpose: 'Traders, Yaba', coverId: 4, nonce: await gn(A), deadline: await dl() })
+    expect((await gkRead('profile', [g])).coverId).toBe(4)
+    await send(A, 'group.setTreasurer', 'SetTreasurer', { admin: A.address, groupId: g, member: C.address, enabled: true, nonce: await gn(A), deadline: await dl() })
+    expect(await gkRead('isTreasurer', [g, C.address])).toBe(true)
 
+    // A1.5 social fund payment: A proposes 0.3 for A (cap 0.5), C (Treasurer) approves (1 approval required) → executed.
+    await send(A, 'group.proposeSocialPayout', 'ProposeSocialPayout', { proposer: A.address, groupId: g, recipient: A.address, amount: 300_000n, reason: 'Medical bill', nonce: await gn(A), deadline: await dl() })
+    const payoutId = await gkRead('payoutCount', [])
+    await send(C, 'group.approveSocialPayout', 'ApproveSocialPayout', { member: C.address, payoutId, nonce: await gn(C), deadline: await dl() })
+    const aBefore = await usdtBal(A.address)
+    const ex = await post(r.app, { action: 'group.executeSocialPayout', params: { payoutId: String(payoutId) } })
+    expect(ex.body.error, ex.body.message).toBeUndefined()
+    await wait(ex.body.hash)
+    expect((await usdtBal(A.address)) - aBefore).toBe(300_000n)
+    expect((await gkRead('payout', [payoutId])).executed).toBe(true)
+
+    // A1.3 group Autosave: one attempt per meeting window; a window already paid by hand is skipped, not doubled
+    await wait((await gaslessApprove(B, f.vault, 10_000_000n)).body.hash)
+    const vn = await nonceOf(f.vault, B.address)
+    const mMsg = { owner: B.address, amountPerRun: 1_200_000n, interval: 3600n, maxRuns: 3, expiry: start + 5n * 3600n, toGroup: true, destId: g, nonce: vn, deadline: await dl() }
+    const mc = await post(r.app, { action: 'vault.createMandate', params: Object.fromEntries(Object.entries(mMsg).map(([k, v]) => [k, typeof v === 'bigint' ? String(v) : v])), signature: await signVault(B, 'CreateMandate', mMsg) })
+    expect(mc.body.error, mc.body.message).toBeUndefined()
+    await wait(mc.body.hash)
+    const mandateId = await f.pub.readContract({ address: f.vault, abi: PocketVaultAbi, functionName: 'mandateCount' }) as bigint
+    const slog = pino({ level: 'silent' })
+    const groupTick = async () => {
+      const t = Number(await chainTs()) * 1000
+      return schedulerTick({ pub: f.pub as any, sender: r.sender, db: r.deps.db, log: slog, vault: f.vault, usdt: USDT, group: f.group, now: () => t })
+    }
+    expect((await groupTick()).sent).toBe(0) // window 0: B already bought by hand → skipped
+    expect((await groupTick()).sent).toBe(0) // still window 0: not attempted again
+    await f.test.increaseTime({ seconds: 3600 })
+    await f.test.mine({ blocks: 1 })
+    expect((await groupTick()).sent).toBe(1) // window 1 runs
+    await new Promise(res => setTimeout(res, 1500))
+    const win1 = (await gkRead('meetingIndex', [g])) as bigint
+    expect(await gkRead('sharesInMeeting', [g, B.address, win1])).toBe(1n)
+    expect((await groupTick()).sent).toBe(0) // once per window
+
+    await settleRelays(r.deps.db, f.pub as any)
     const gi = await (await r.app.request(`/group/${g}`)).json() as any
     expect(gi.loanIds).toEqual([String(loanId)])
-    expect(gi.grantIds).toEqual([String(grantId)])
+    expect(gi.payoutIds).toEqual([String(payoutId)])
+    expect(gi.mandateIds).toEqual([String(mandateId)])
+    expect(gi.approvers.loans[String(loanId)]).toEqual([C.address.toLowerCase()])
+    expect(gi.approvers.payouts[String(payoutId)]).toEqual([C.address.toLowerCase()])
+    expect(gi.relays).toEqual([]) // every relayed group tx settled as confirmed
+    const wins = gi.autosaveWindows.map((w: any) => `${w.windowIdx}:${w.status}`).sort()
+    expect(wins).toEqual([`0:skipped`, `${win1}:sent`].sort())
+    expect(gi.autosaveWindows.find((w: any) => w.status === 'skipped').reason).toBe('Already paid by hand this meeting')
     expect((await r.app.request('/group/abc')).status).toBe(400)
+
+    // A1.2 feed: every event with its initiator
+    const feed = (await (await r.app.request(`/group/${g}/feed`)).json() as any).items as any[]
+    const by = (ev: string) => feed.filter(i => i.event === ev)
+    const lc = (u: PrivateKeyAccount) => u.address.toLowerCase()
+    expect(by('GroupCreated')[0].actor).toBe(lc(A))
+    expect(by('GroupProfileUpdated').map(i => i.actor)).toEqual([lc(A), lc(A)])
+    expect(by('RoleChanged').map(i => i.args.newRole)).toEqual([2, 3]) // newest first: Treasurer, then Admin at creation
+    expect(by('LoanRequested')[0].actor).toBe(lc(B))
+    expect(by('LoanApproved')[0].actor).toBe(lc(C))
+    expect(by('LoanDisbursed')[0].actor).toBeUndefined() // permissionless
+    expect(by('LoanRepaid')[0].actor).toBe(lc(B))
+    expect(by('SocialPayoutProposed')[0].actor).toBe(lc(A))
+    expect(by('SocialPayoutApproved')[0].actor).toBe(lc(C))
+    expect(by('SocialPayoutExecuted')).toHaveLength(1)
+    expect(by('GroupMandateCreated')[0].actor).toBe(lc(B))
+    expect(by('SharesBought').filter(i => i.actor === 'autosave')).toHaveLength(1)
+    expect(by('SharesBought').filter(i => i.actor !== 'autosave')).toHaveLength(3)
+    expect(feed.every(i => typeof i.ts === 'number' && /^0x[0-9a-f]{64}$/.test(i.hash))).toBe(true)
+
+    // A1.2 gate: a fresh relayer (empty memory, new DB) rebuilds the same feed from chain data
+    const r2 = build(cfg())
+    const feed2 = (await (await r2.app.request(`/group/${g}/feed`)).json() as any).items as any[]
+    expect(feed2.map(i => `${i.hash}:${i.logIndex}:${i.event}:${i.actor ?? ''}`)).toEqual(feed.map(i => `${i.hash}:${i.logIndex}:${i.event}:${i.actor ?? ''}`))
+    r2.stop()
 
     const actB = await (await r.app.request(`/activity/${B.address}`)).json() as any
     const evB = actB.items.map((i: any) => i.event)
-    for (const e of ['MemberJoined', 'SharesBought', 'LoanRequested', 'LoanApproved', 'LoanDisbursed', 'LoanRepaid', 'GrantApproved']) expect(evB).toContain(e)
-    expect(evB[0]).toBe('GrantApproved') // newest first
+    for (const e of ['MemberJoined', 'SharesBought', 'LoanRequested', 'LoanApproved', 'LoanDisbursed', 'LoanRepaid', 'MandateExecuted']) expect(evB).toContain(e)
+    expect(evB[0]).toBe('SharesBought') // newest first: the Autosave run (GroupKitty logs after the vault's MandateExecuted)
     expect(actB.items.every((i: any) => /^0x[0-9a-f]{64}$/.test(i.hash) && typeof i.ts === 'number')).toBe(true)
     const evC = (await (await r.app.request(`/activity/${C.address}`)).json() as any).items.map((i: any) => i.event)
     expect(evC).toContain('LoanRequested') // guarantor sees the loan they back
     expect(evC).toContain('LoanDisbursed')
     expect((await r.app.request('/activity/0x123')).status).toBe(400)
 
-    // Share-Out after cycle end: cash 15.8, social 0.3 → each ~5.3667; total paid is exactly 16.1.
+    // Share-Out after cycle end: cash 16.8 (15 + 0.8 interest + 1 Autosave share), social 0.5 → total paid exactly 17.3.
     await f.test.increaseTime({ seconds: 6 * 3600 })
     await f.test.mine({ blocks: 1 })
     const before = await Promise.all([A, B, C].map(u => usdtBal(u.address)))
     for (const u of [A, B, C]) await send(u, 'group.claimShareOut', 'ClaimShareOut', { member: u.address, groupId: g, rollPocketId: 0n, nonce: await gn(u), deadline: await dl() })
     const after = await Promise.all([A, B, C].map(u => usdtBal(u.address)))
     const paid = after.map((x, i) => x - before[i])
-    expect(paid.reduce((a, b) => a + b, 0n)).toBe(16_100_000n)
-    for (const p of paid) expect(p >= 5_366_666n && p <= 5_366_668n).toBe(true)
+    expect(paid.reduce((a, b) => a + b, 0n)).toBe(17_300_000n)
+    // A and C: 16.8 × 5/16 + 0.5/3 = 5.25 + 0.1667; B: 16.8 × 6/16 + 0.1667 = 6.3 + 0.1667 (rounding dust to the last claimer)
+    expect(paid[0] >= 5_416_666n && paid[0] <= 5_416_668n).toBe(true)
+    expect(paid[1] >= 6_466_666n && paid[1] <= 6_466_668n).toBe(true)
     const evA = (await (await r.app.request(`/activity/${A.address}`)).json() as any).items.map((i: any) => i.event)
     expect(evA[0]).toBe('ShareOutClaimed')
   }, 300_000)

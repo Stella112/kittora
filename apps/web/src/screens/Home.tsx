@@ -70,7 +70,7 @@ export function Home() {
         <h2 className="font-bold">How your group grows money</h2>
         <ol className="mt-3 space-y-2 text-sm text-muted">
           <li><b className="text-ink">1. Buy shares</b> at each meeting. Your savings are your shares.</li>
-          <li><b className="text-ink">2. Members borrow</b> from the pot with guarantors, and repay with interest.</li>
+          <li><b className="text-ink">2. Members borrow</b> from the Group Kitty with guarantors, and repay with interest.</li>
           <li><b className="text-ink">3. Share-Out</b>: everyone gets their savings plus a share of the interest.</li>
         </ol>
       </Card>

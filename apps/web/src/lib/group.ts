@@ -1,37 +1,40 @@
-// Live reads for one Group Kitty. Loan / grant ids come from the relayer index; every value is read from the contract
-// (multicall-batched by the reader client).
+// Live reads for one Group Kitty. Loan / payment / mandate ids come from the relayer index; every value is read from
+// the contracts (multicall-batched by the reader client). Relay and Autosave tracking come from the relayer.
 import { useQuery } from '@tanstack/react-query'
-import type { Abi, Address } from 'viem'
-import { GroupKittyAbi } from '@kittora/core'
+import { getAddress, type Abi, type Address } from 'viem'
+import { GroupKittyAbi, PocketVaultAbi } from '@kittora/core'
 import { config, contractsDeployed } from '../config.ts'
 import { reader } from './evm.ts'
 import { relayer } from './relayer.ts'
 import { noteChainTime } from './chainActions.ts'
-import { store } from './storage.ts'
-import { LoanStatus, valueOf, type GroupDetail, type GrantView, type GroupParams, type LoanView, type MemberRow } from './groupMath.ts'
+import { LoanStatus, Role, same, valueOf, type GroupDetail, type GroupMandate, type GroupParams, type GroupProfile, type LoanView, type MemberRow, type PayoutView } from './groupMath.ts'
 
 export * from './groupMath.ts'
 
 const abi = GroupKittyAbi as Abi
+const vaultAbi = PocketVaultAbi as Abi
 const ZERO = '0x0000000000000000000000000000000000000000'
 /** Meetings shown on the group board (current one included). */
 export const BOARD_MEETINGS = 4
 
-export const groupName = (id: bigint) => store.get<string>(`groupName:${id}`) ?? `Group #${id}`
-export const setGroupName = (id: bigint, name: string) => { if (name.trim()) store.set(`groupName:${id}`, name.trim().slice(0, 40)) }
-
-export const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
-export const same = (a?: string | null, b?: string | null) => Boolean(a && b && a.toLowerCase() === b.toLowerCase())
+/** Shortened address in checksum case, so the same member always looks the same. */
+export const short = (a: string) => {
+  let c = a
+  try { c = getAddress(a) } catch { /* not an address: show as given */ }
+  return `${c.slice(0, 6)}…${c.slice(-4)}`
+}
 
 export async function loadGroup(id: bigint, me: Address | null): Promise<GroupDetail | null> {
   const r = reader()
   const gk = config.groupKitty!
   const read = <T>(functionName: string, args: unknown[] = []) => r.readContract({ address: gk, abi, functionName, args }) as Promise<T>
 
-  const [p, st, list, index, block] = await Promise.all([
+  const [p, st, list, profile, admin, index, block] = await Promise.all([
     read<GroupParams>('groupParams', [id]),
     read<readonly [Address, bigint, number, number, bigint, bigint, bigint, bigint, boolean]>('groupState', [id]),
     read<Address[]>('memberList', [id]),
+    read<GroupProfile>('profile', [id]),
+    read<Address>('adminOf', [id]),
     relayer.group(id),
     r.getBlock({ blockTag: 'latest' }),
   ])
@@ -47,12 +50,13 @@ export async function loadGroup(id: bigint, me: Address | null): Promise<GroupDe
   for (let m = first; m <= meeting; m++) meetings.push(m)
 
   const members = await Promise.all(list.map(async (a): Promise<MemberRow> => {
-    const [m, history, socialPaidNow] = await Promise.all([
+    const [m, history, socialPaidNow, role] = await Promise.all([
       read<readonly [boolean, boolean, bigint, bigint, bigint]>('members', [id, a]),
       Promise.all(meetings.map(i => read<bigint>('sharesInMeeting', [id, a, i]))),
       read<boolean>('socialPaid', [id, a, meeting]),
+      read<number>('roleOf', [id, a]),
     ])
-    return { address: a, claimed: m[1], shares: m[2], pledged: m[3], activeLoan: m[4], history, socialPaidNow }
+    return { address: a, claimed: m[1], shares: m[2], pledged: m[3], activeLoan: m[4], history, socialPaidNow, role: role as Role }
   }))
   const addrs = list.map(a => a.toLowerCase())
 
@@ -70,12 +74,23 @@ export async function loadGroup(id: bigint, me: Address | null): Promise<GroupDe
     }
   }))
 
-  const grants = await Promise.all(index.grantIds.map(async (s): Promise<GrantView> => {
-    const gid = BigInt(s)
-    const g = await read<readonly [Address, bigint, bigint, number, boolean]>('grants', [gid])
-    const flags = await Promise.all(addrs.map(a => read<boolean>('grantApprovedBy', [gid, a])))
-    return { id: gid, member: g[0], amount: g[2], approvals: g[3], paid: g[4], approvedBy: Object.fromEntries(addrs.map((a, i) => [a, flags[i]])) }
+  const payouts = await Promise.all(index.payoutIds.map(async (s): Promise<PayoutView> => {
+    const pid = BigInt(s)
+    const po = await read<{ proposer: Address, recipient: Address, amount: bigint, expiresAt: bigint, approvals: number, treasurerApproved: boolean, adminApproved: boolean, executed: boolean, reason: string }>('payout', [pid])
+    const flags = await Promise.all(addrs.map(a => read<boolean>('payoutApprovedBy', [pid, a])))
+    return {
+      id: pid, proposer: po.proposer, recipient: po.recipient, amount: po.amount, expiresAt: po.expiresAt, approvals: po.approvals,
+      treasurerApproved: po.treasurerApproved, adminApproved: po.adminApproved, executed: po.executed, reason: po.reason,
+      approvedBy: Object.fromEntries(addrs.map((a, i) => [a, flags[i]])),
+    }
   }))
+
+  const mandates = config.vault ? await Promise.all(index.mandateIds.map(async (s): Promise<GroupMandate> => {
+    const mid = BigInt(s)
+    const m = await r.readContract({ address: config.vault!, abi: vaultAbi, functionName: 'mandates', args: [mid] }) as readonly [Address, bigint, bigint, number, number, bigint, bigint, boolean, boolean, bigint]
+    const active = !m[8] && m[4] < m[3] && m[5] >= now
+    return { id: mid, owner: m[0], amountPerRun: m[1], runs: m[4], maxRuns: m[3], expiry: m[5], revoked: m[8], active }
+  })) : []
 
   return {
     id, p, creator, startAt, memberCount, activeLoans, cash, socialFund, outstanding, totalShares, shareOutStarted,
@@ -83,7 +98,14 @@ export async function loadGroup(id: bigint, me: Address | null): Promise<GroupDe
     members, me: members.find(m => same(m.address, me)) ?? null,
     shareValue: valueOf({ totalShares, cash, outstanding, p }, 1n),
     loans: loans.sort((a, b) => Number(b.id - a.id)),
-    grants: grants.sort((a, b) => Number(b.id - a.id)),
+    payouts: payouts.sort((a, b) => Number(b.id - a.id)),
+    profile: { name: profile.name, purpose: profile.purpose, coverId: Number(profile.coverId) },
+    admin,
+    treasurers: members.filter(m => m.role === Role.Treasurer).map(m => m.address),
+    mandates,
+    relays: index.relays,
+    autosaveWindows: index.autosaveWindows,
+    approvers: index.approvers,
   }
 }
 
@@ -93,6 +115,16 @@ export function useGroup(id: bigint | null, me: Address | null) {
     queryFn: () => loadGroup(id!, me),
     enabled: id !== null && contractsDeployed(),
     refetchInterval: 30_000,
+    retry: 1,
+  })
+}
+
+export function useGroupFeed(id: bigint | null) {
+  return useQuery({
+    queryKey: ['groupFeed', id?.toString()],
+    queryFn: () => relayer.groupFeed(id!),
+    enabled: id !== null && contractsDeployed(),
+    refetchInterval: 20_000,
     retry: 1,
   })
 }

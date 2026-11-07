@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { loanCheck, parseGroupRef, shareOutEstimate, valueOf, type GroupDetail } from './groupMath.ts'
 
-const p = { sharePrice: 1_000_000n, socialFundPerMeeting: 200_000n, meetingInterval: 3600n, cycleEnd: 0n, gracePeriod: 600n, interestBps: 1000, maxLoanMultipleBps: 30000, maxSharesPerMeeting: 5, approvalsRequired: 2, maxMembers: 10 }
+const p = { sharePrice: 1_000_000n, socialFundPerMeeting: 200_000n, meetingInterval: 3600n, cycleEnd: 0n, gracePeriod: 600n, interestBps: 1000, maxLoanMultipleBps: 30000, maxSharesPerMeeting: 5, approvalsRequired: 2, maxMembers: 10, maxSocialPayout: 0n }
 
 describe('group math mirrors GroupKitty', () => {
   it('values shares at sharePrice before any shares exist, then at pool value per share', () => {

@@ -37,16 +37,45 @@ export const forfeits = sqliteTable('forfeits', {
   updatedAt: integer('updated_at').notNull(),
 })
 
+/** A1.2: every relayed tx with its group, so the feed can show Submitted → Confirmed / Failed from our own tracking. */
+export const relayStatus = sqliteTable('relay_status', {
+  hash: text('hash').primaryKey(),
+  action: text('action').notNull(),
+  signer: text('signer').notNull(),
+  groupId: integer('group_id'),
+  refId: integer('ref_id'), // loanId / payoutId when the action names one
+  status: text('status').notNull(), // submitted | confirmed | failed
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+})
+
+/** A1.3: one Autosave attempt per group mandate per meeting window (`${mandateId}:${window}`). */
+export const mandateWindows = sqliteTable('mandate_windows', {
+  key: text('key').primaryKey(),
+  mandateId: integer('mandate_id').notNull(),
+  groupId: integer('group_id').notNull(),
+  member: text('member').notNull(),
+  windowIdx: integer('window_idx').notNull(),
+  status: text('status').notNull(), // sent | skipped (already paid this window) | failed
+  reason: text('reason'),
+  txHash: text('tx_hash'),
+  updatedAt: integer('updated_at').notNull(),
+})
+
 const DDL = `
 CREATE TABLE IF NOT EXISTS rate_hits (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT NOT NULL, ts INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS rate_hits_key_ts ON rate_hits(key, ts);
 CREATE TABLE IF NOT EXISTS relays (hash TEXT PRIMARY KEY, action TEXT NOT NULL, signer TEXT NOT NULL, created_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS mandate_runs (key TEXT PRIMARY KEY, mandate_id INTEGER NOT NULL, run INTEGER NOT NULL, status TEXT NOT NULL, tx_hash TEXT, updated_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS forfeits (bond_id INTEGER PRIMARY KEY, nimiq_tx TEXT NOT NULL, tx_hash TEXT, status TEXT NOT NULL, updated_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS relay_status (hash TEXT PRIMARY KEY, action TEXT NOT NULL, signer TEXT NOT NULL, group_id INTEGER, ref_id INTEGER, status TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS relay_status_group ON relay_status(group_id);
+CREATE TABLE IF NOT EXISTS mandate_windows (key TEXT PRIMARY KEY, mandate_id INTEGER NOT NULL, group_id INTEGER NOT NULL, member TEXT NOT NULL, window_idx INTEGER NOT NULL, status TEXT NOT NULL, reason TEXT, tx_hash TEXT, updated_at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS mandate_windows_group ON mandate_windows(group_id);
 `
 
 // Postgres (Neon in production). Same Drizzle schema and queries: the sqlite-proxy driver emits plain SQL with `?`
-// placeholders, which we number for Postgres. Only these four simple tables and queries go through it.
+// placeholders, which we number for Postgres. Only these simple tables and queries go through it.
 // rate_hits.id has no primary key here because the sqlite dialect inserts NULL for it (it is an append-only log).
 const DDL_PG = `
 CREATE TABLE IF NOT EXISTS rate_hits (id BIGINT, key TEXT NOT NULL, ts BIGINT NOT NULL);
@@ -54,6 +83,10 @@ CREATE INDEX IF NOT EXISTS rate_hits_key_ts ON rate_hits(key, ts);
 CREATE TABLE IF NOT EXISTS relays (hash TEXT PRIMARY KEY, action TEXT NOT NULL, signer TEXT NOT NULL, created_at BIGINT NOT NULL);
 CREATE TABLE IF NOT EXISTS mandate_runs (key TEXT PRIMARY KEY, mandate_id BIGINT NOT NULL, run BIGINT NOT NULL, status TEXT NOT NULL, tx_hash TEXT, updated_at BIGINT NOT NULL);
 CREATE TABLE IF NOT EXISTS forfeits (bond_id BIGINT PRIMARY KEY, nimiq_tx TEXT NOT NULL, tx_hash TEXT, status TEXT NOT NULL, updated_at BIGINT NOT NULL);
+CREATE TABLE IF NOT EXISTS relay_status (hash TEXT PRIMARY KEY, action TEXT NOT NULL, signer TEXT NOT NULL, group_id BIGINT, ref_id BIGINT, status TEXT NOT NULL, created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL);
+CREATE INDEX IF NOT EXISTS relay_status_group ON relay_status(group_id);
+CREATE TABLE IF NOT EXISTS mandate_windows (key TEXT PRIMARY KEY, mandate_id BIGINT NOT NULL, group_id BIGINT NOT NULL, member TEXT NOT NULL, window_idx BIGINT NOT NULL, status TEXT NOT NULL, reason TEXT, tx_hash TEXT, updated_at BIGINT NOT NULL);
+CREATE INDEX IF NOT EXISTS mandate_windows_group ON mandate_windows(group_id);
 `
 
 /** Minimal Postgres client: run a statement, return rows as arrays in column order. */

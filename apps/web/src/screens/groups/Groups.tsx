@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import type { Address } from 'viem'
 import { usePortfolio } from '../../lib/portfolio.ts'
-import { groupName, parseGroupRef } from '../../lib/group.ts'
+import { parseGroupRef } from '../../lib/group.ts'
+import { coverStyle, cover } from '../../lib/covers.ts'
 import { classify, makeError } from '../../lib/errors.ts'
 import { Button, Card, ErrorPanel, Spinner, usdt } from '../../components/ui.tsx'
 import { RequireEvm } from '../../components/RequireEvm.tsx'
@@ -41,8 +42,9 @@ function GroupsBody({ evm }: { evm: Address }) {
             <li key={String(g.id)}>
               <Link to={`/groups/${g.id}`} className="block">
                 <Card className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="font-bold">{groupName(g.id)}</p>
+                  <div className="h-12 w-12 shrink-0 rounded-2xl" style={coverStyle(g.coverId)} aria-label={`${cover(g.coverId).name} cover`} />
+                  <div className="min-w-0 flex-1">
+                    <p className="break-words font-bold">{g.name}</p>
                     <p className="text-sm text-muted">{g.shares.toString()} shares · {g.shareOutOpen ? 'Share-Out open' : `next meeting ${new Date(Number(g.nextMeetingAt < g.cycleEnd ? g.nextMeetingAt : g.cycleEnd) * 1000).toLocaleString()}`}</p>
                   </div>
                   <p className="tabular text-right text-lg font-bold">{usdt(g.value)}<span className="block text-xs font-normal text-muted">USDT</span></p>

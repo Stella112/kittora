@@ -334,71 +334,64 @@ contract GroupKittyTest is Base {
         new GroupKitty(IERC20(address(0)), address(vault));
     }
 
-    // ------------------------------------------------------------ social fund grants
+    // ------------------------------------------------------------ social fund payments (A1.5 replaces grants)
 
-    function test_socialFundGrant() public {
-        uint256 g = _groupWith5(1); // social 1.0
-        uint256 n = gk.nonces(bob);
-        vm.prank(bob);
-        vm.expectRevert(GroupKitty.BadParams.selector);
-        gk.requestGrant(bob, g, 1.1e6, n, _dl(), "");
-        vm.prank(bob);
-        uint256 id = gk.requestGrant(bob, g, 0.6e6, n, _dl(), "");
-        n = gk.nonces(bob);
-        vm.prank(bob);
-        vm.expectRevert(GroupKitty.SelfApproval.selector);
-        gk.approveGrant(bob, id, n, _dl(), "");
-        n = gk.nonces(carol);
-        vm.prank(carol);
-        gk.approveGrant(carol, id, n, _dl(), "");
-        n = gk.nonces(carol);
-        vm.prank(carol);
-        vm.expectRevert(GroupKitty.AlreadyApproved.selector);
-        gk.approveGrant(carol, id, n, _dl(), "");
-        uint256 bal = USDT.balanceOf(bob);
-        n = gk.nonces(dave);
-        vm.prank(dave);
-        gk.approveGrant(dave, id, n, _dl(), "");
-        assertEq(USDT.balanceOf(bob), bal + 0.6e6);
-        assertEq(_social(g), 0.4e6);
-        n = gk.nonces(erin);
-        vm.prank(erin);
-        vm.expectRevert(GroupKitty.BadParams.selector); // already paid
-        gk.approveGrant(erin, id, n, _dl(), "");
-        n = gk.nonces(relayer);
-        vm.prank(relayer);
-        vm.expectRevert(GroupKitty.NotMember.selector);
-        gk.requestGrant(relayer, g, 0.1e6, n, _dl(), "");
-    }
-
-    function test_grantNoLiquidityWhenFundDrained() public {
-        uint256 g = _groupWith5(1);
-        uint256 n = gk.nonces(bob);
-        vm.prank(bob);
-        uint256 a = gk.requestGrant(bob, g, 0.8e6, n, _dl(), "");
-        n = gk.nonces(carol);
-        vm.prank(carol);
-        uint256 b = gk.requestGrant(carol, g, 0.8e6, n, _dl(), "");
-        _grantApprove(dave, a);
-        _grantApprove(erin, a);
-        _grantApprove(dave, b);
-        _rev(GroupKitty.NoLiquidity.selector);
-        _grantApproveExternal(erin, b);
-    }
-
-    function _grantApprove(address who, uint256 id) internal {
-        uint256 n = gk.nonces(who);
-        uint256 dl = _dl();
-        vm.prank(who);
-        gk.approveGrant(who, id, n, dl, "");
-    }
-
-    function _grantApproveExternal(address who, uint256 id) internal {
+    function _propose(address who, uint256 g, address to, uint256 amount) internal returns (uint256 id) {
         uint256 n = gk.nonces(who);
         uint256 dl = _dl();
         _arm();
         vm.prank(who);
-        gk.approveGrant(who, id, n, dl, "");
+        id = gk.proposeSocialPayout(who, g, to, amount, "Medical bill", n, dl, "");
+    }
+
+    function _payApprove(address who, uint256 id) internal {
+        uint256 n = gk.nonces(who);
+        uint256 dl = _dl();
+        _arm();
+        vm.prank(who);
+        gk.approveSocialPayout(who, id, n, dl, "");
+    }
+
+    function test_socialFundGrant() public {
+        uint256 g = _groupWith5(1); // social 1.0, approvalsRequired 2, Admin alice, no Treasurer
+        _rev(GroupKitty.BadParams.selector);
+        _propose(bob, g, bob, 1.1e6); // above the fund
+        uint256 id = _propose(bob, g, bob, 0.6e6);
+        _rev(GroupKitty.SelfApproval.selector);
+        _payApprove(bob, id);
+        _payApprove(carol, id);
+        _rev(GroupKitty.AlreadyApproved.selector);
+        _payApprove(carol, id);
+        _payApprove(dave, id);
+        _rev(GroupKitty.PayoutNotReady.selector); // 2 approvals but no Admin approval (no Treasurer in the group)
+        _armedExecute(id);
+        _payApprove(alice, id);
+        uint256 bal = USDT.balanceOf(bob);
+        gk.executeSocialPayout(id);
+        assertEq(USDT.balanceOf(bob), bal + 0.6e6);
+        assertEq(_social(g), 0.4e6);
+        _rev(GroupKitty.BadParams.selector); // already paid
+        _payApprove(erin, id);
+        _rev(GroupKitty.NotMember.selector);
+        _propose(relayer, g, relayer, 0.1e6);
+    }
+
+    function test_grantNoLiquidityWhenFundDrained() public {
+        uint256 g = _groupWith5(1);
+        uint256 a = _propose(bob, g, bob, 0.8e6);
+        uint256 b = _propose(carol, g, carol, 0.8e6);
+        _payApprove(dave, a);
+        _payApprove(alice, a);
+        _payApprove(dave, b);
+        _payApprove(alice, b);
+        gk.executeSocialPayout(a);
+        _rev(GroupKitty.NoLiquidity.selector);
+        _armedExecute(b);
+    }
+
+    function _armedExecute(uint256 id) internal {
+        _arm();
+        gk.executeSocialPayout(id);
     }
 
     // ------------------------------------------------------------ Share-Out rules
@@ -420,11 +413,9 @@ contract GroupKittyTest is Base {
         _claim(alice, g, 0);
         _rev(GroupKitty.NotMember.selector);
         _claim(relayer, g, 0);
-        // grants blocked after share-out started
-        uint256 n = gk.nonces(bob);
-        vm.prank(bob);
-        vm.expectRevert(GroupKitty.ShareOutStarted.selector);
-        gk.requestGrant(bob, g, 1, n, _dl(), "");
+        // social fund payments blocked after share-out started
+        _rev(GroupKitty.ShareOutStarted.selector);
+        _propose(bob, g, bob, 1);
     }
 
     function test_shareOutDustGoesToLastClaimer() public {
@@ -473,12 +464,16 @@ contract GroupKittyTest is Base {
                 p.maxSharesPerMeeting,
                 p.approvalsRequired,
                 p.maxMembers,
+                p.maxSocialPayout,
+                keccak256(bytes("Test group")),
+                keccak256(bytes("")),
+                uint8(0),
                 uint256(0),
                 dl
             )
         );
         vm.prank(relayer);
-        uint256 g = gk.createGroup(alice, p, 0, dl, _sign(pks[0], gk, h));
+        uint256 g = gk.createGroup(alice, p, _prof(), 0, dl, _sign(pks[0], gk, h));
 
         bytes memory sig = _sign(pks[1], gk, keccak256(abi.encode(gk.JOIN_TYPEHASH(), bob, g, uint256(0), dl)));
         vm.prank(relayer);

@@ -6,7 +6,8 @@ import { GroupKittyAbi } from '@kittora/core'
 import { parseUsdt } from '../../lib/amounts.ts'
 import { deadline, groupNonce, signAndRelayGroup } from '../../lib/chainActions.ts'
 import { reader } from '../../lib/evm.ts'
-import { setGroupName } from '../../lib/group.ts'
+import { COVERS } from '../../lib/covers.ts'
+import { CoverPicker, profileError } from './AdminPanel.tsx'
 import { makeError } from '../../lib/errors.ts'
 import { Button, Card, ErrorPanel, usdt } from '../../components/ui.tsx'
 import { RequireEvm } from '../../components/RequireEvm.tsx'
@@ -34,12 +35,16 @@ export function NewGroup() {
 interface Draft {
   sharePrice: bigint; socialFundPerMeeting: bigint; meetingInterval: bigint; cycleEnd: bigint; gracePeriod: bigint
   interestBps: number; maxLoanMultipleBps: number; maxSharesPerMeeting: number; approvalsRequired: number; maxMembers: number
+  maxSocialPayout: bigint; name: string; purpose: string; coverId: number
 }
 
 function Form({ evm }: { evm: Address }) {
   const nav = useNavigate()
   const qc = useQueryClient()
   const [name, setName] = useState('')
+  const [purpose, setPurpose] = useState('')
+  const [coverId, setCoverId] = useState(0)
+  const [payoutCap, setPayoutCap] = useState('5')
   const [price, setPrice] = useState('1')
   const [social, setSocial] = useState('0.20')
   const [interval, setIntervalS] = useState(604800)
@@ -56,6 +61,10 @@ function Form({ evm }: { evm: Address }) {
 
   async function review() {
     setErr(null)
+    const pe = profileError(name, purpose)
+    if (pe) return setErr(pe)
+    const cap = payoutCap.trim() === '' || Number(payoutCap) === 0 ? 0n : parseUsdt(payoutCap)
+    if (cap === null) return setErr('Enter the largest social fund payment, or 0 for no cap.')
     const sp = parseUsdt(price)
     if (!sp) return setErr('Enter a share price like 1 or 0.50.')
     if (sp > 25_000_000n) return setErr('Pilot limit: a share costs at most 25 USDT.')
@@ -74,6 +83,7 @@ function Form({ evm }: { evm: Address }) {
     setDraft({
       sharePrice: sp, socialFundPerMeeting: sf, meetingInterval: BigInt(interval), cycleEnd: now + BigInt(interval) * BigInt(n) + 60n,
       gracePeriod: BigInt(grace), interestBps: Math.round(ir * 100), maxLoanMultipleBps: multiple, maxSharesPerMeeting: maxShares, approvalsRequired: ap, maxMembers: mm,
+      maxSocialPayout: cap, name: name.trim(), purpose: purpose.trim(), coverId,
     })
   }
 
@@ -88,7 +98,6 @@ function Form({ evm }: { evm: Address }) {
         } catch { /* other events */ }
       }
     } catch { /* fall back to the list */ }
-    if (id !== null) setGroupName(id, name)
     await qc.invalidateQueries({ queryKey: ['portfolio'] })
     nav(id !== null ? `/groups/${id}?invite=1` : '/groups')
   }
@@ -105,7 +114,7 @@ function Form({ evm }: { evm: Address }) {
       <TxFlow
         owner={evm}
         summary={{
-          what: `Create ${name.trim() || 'a group'} (you join as the first member)`,
+          what: `Create ${draft.name} (you join as the first member, as Admin)`,
           chain: 'Polygon',
           extra: [
             ['Share price', `${usdt(draft.sharePrice)} USDT`],
@@ -115,6 +124,8 @@ function Form({ evm }: { evm: Address }) {
             ['Loans', `${draft.interestBps / 100}% interest, up to ${draft.maxLoanMultipleBps / 10000}× own savings, ${draft.approvalsRequired} approval${draft.approvalsRequired === 1 ? '' : 's'}`],
             ['Grace period', durationLabel(draft.gracePeriod)],
             ['Members', `up to ${draft.maxMembers}`],
+            ['Social fund payments', draft.maxSocialPayout > 0n ? `up to ${usdt(draft.maxSocialPayout)} USDT each` : 'no cap beyond the fund'],
+            ['Profile', `${draft.purpose || 'no purpose'} · ${COVERS[draft.coverId].name} cover`],
             ['Pilot limit', '500 USDT per group pool'],
           ],
         }}
@@ -128,7 +139,12 @@ function Form({ evm }: { evm: Address }) {
 
   return (
     <Card className="space-y-4">
-      <Field label="Group name (shown on your phone and in the invite)"><input className="input" value={name} maxLength={40} onChange={e => setName(e.target.value)} placeholder="Market women's kitty" /></Field>
+      <Field label="Group name"><input className="input" value={name} maxLength={32} onChange={e => setName(e.target.value)} placeholder="Market women's kitty" /></Field>
+      <Field label="Purpose (optional)"><input className="input" value={purpose} maxLength={80} onChange={e => setPurpose(e.target.value)} placeholder="Market traders, Yaba" /></Field>
+      <div>
+        <span className="mb-1 block text-sm font-semibold">Cover</span>
+        <CoverPicker value={coverId} onChange={setCoverId} />
+      </div>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Share price (USDT)"><input className="input" inputMode="decimal" value={price} onChange={e => setPrice(e.target.value)} /></Field>
         <Field label="Social fund / meeting"><input className="input" inputMode="decimal" value={social} onChange={e => setSocial(e.target.value)} /></Field>
@@ -154,6 +170,7 @@ function Form({ evm }: { evm: Address }) {
         <Field label="Approvals per loan"><input className="input" inputMode="numeric" value={approvals} onChange={e => setApprovals(e.target.value)} /></Field>
         <Field label="Max members"><input className="input" inputMode="numeric" value={maxMembers} onChange={e => setMaxMembers(e.target.value)} /></Field>
       </div>
+      <Field label="Largest social fund payment (USDT, 0 = no cap)"><input className="input" inputMode="decimal" value={payoutCap} onChange={e => setPayoutCap(e.target.value)} /></Field>
       <Field label="Grace period before a late loan defaults">
         <select className="input" value={grace} onChange={e => setGrace(Number(e.target.value))}>{GRACE.map(([l, s]) => <option key={s} value={s}>{l}</option>)}</select>
       </Field>
