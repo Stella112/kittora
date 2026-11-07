@@ -29,8 +29,8 @@ What to try (inside Nimiq Pay, with ~2 USDT on Polygon):
 3. Ask for a small loan with the other member as guarantor; they approve; pay it out; repay it.
 4. Activity: every step with its Polygonscan link.
 
-Contracts (verified on Polygonscan): PocketVault `0x7B1e1bAed045Db95b5F5b3E1e6E50efdac851251`,
-GroupKitty `0x2271dA8756185B48A46A17051fF3A90d6481ed5f`.
+Contracts (verified on Polygonscan): PocketVault `0x2583FE752256afB1F863a2D5EEea5241BD2B4bDb`,
+GroupKitty `0x19d8687607fD86A25F8e80a535e5A9c6A848A4a7`.
 
 **AI tools it was built with**
 Claude Code (Claude Opus). `TODO: add any other tools you used.`

@@ -227,3 +227,21 @@ Code is on branch `a1` (commit d7d6900); `main` and kittora.xyz still run the pr
 **Open:**
 - Phone check that Nimiq Pay sends a 1-Luna self-payment with the memo and the relayer verifies it on mainnet.
 - Scheduler Autosave runs are unstamped (see DECISIONS).
+
+## Nov 7 2026: A1 redeploy to Polygon mainnet (approved by Maris: "Sent, redeploy")
+Checked first (Addendum §5): the first deployment held **0 groups, 0 pockets, 0 USDT**, so no real funds were stranded.
+
+| Contract | Address | Tx | Block |
+|---|---|---|---|
+| PocketVault | [0x2583FE752256afB1F863a2D5EEea5241BD2B4bDb](https://polygonscan.com/address/0x2583fe752256afb1f863a2d5eeea5241bd2b4bdb) | [0x9e03d4b0…](https://polygonscan.com/tx/0x9e03d4b0075b85867fbdb072690cfcb6bb52b90a74dffb816c022f33cace19e8) | 96,904,101 |
+| GroupKitty (A1) | [0x19d8687607fD86A25F8e80a535e5A9c6A848A4a7](https://polygonscan.com/address/0x19d8687607fd86a25f8e80a535e5a9c6a848a4a7) | [0x570b924b…](https://polygonscan.com/tx/0x570b924bc55a5ebb77316495e257ee9aa683f57e49df7efc697f3d2a80541fed) | 96,904,104 |
+| `setGroupKitty` | | [0xcca05c2d…](https://polygonscan.com/tx/0xcca05c2d95b346e97f639a25dd6224675e5d20e1f126afbfb392248ef038bfc8) | 96,904,106 |
+
+- All three receipts have status 1. `vault.groupKitty()` = new GroupKitty; `gk.vault()` = new PocketVault; attester `0xa592…8a12`; `PAYOUT_TTL` 604800; `COVER_COUNT` 8.
+- Verified on Polygonscan (GroupKitty "Pass - Verified"; PocketVault already matched as verified source).
+- Cost 2.36 POL at a 320 gwei cap. Deployer/relayer has 2.60 POL left.
+- First attempt via the Tenderly gateway was refused before sending ("tx fee exceeds the configured cap (1.00 ether)", a per-tx cap on that gateway). Nothing was sent: nonce still 3. Broadcast via `polygon.drpc.org` instead.
+- The old contracts (0x7B1e…1251 / 0x2271…ed5f) are retired and empty.
+- Updated: local relayer `.env`, `apps/web/.env.local`, `deploy/vps/web.Dockerfile`, `deploy/vps/relayer.env.example`, `submission/SUBMISSION.md`.
+
+**Not yet done:** kittora.xyz still serves the old build and points at the old contracts. Shipping needs `a1` merged to `main`, the server's `relayer.env` updated (addresses + `DEPLOY_BLOCK=96904101`) and the images rebuilt.
