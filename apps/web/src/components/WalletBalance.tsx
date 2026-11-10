@@ -12,7 +12,16 @@ import { usdt } from './ui.tsx'
 export function useNimBalances(nimiqAddress: string | null) {
   const bal = useQuery({
     queryKey: ['nimBalance', nimiqAddress],
-    queryFn: async () => unwrap(await (await nimiqProvider()).getBalance(nimiqAddress!)),
+    // Nimiq Pay's own client first; if it is still syncing ("Nimiq network is not ready") or errors, read it via the relayer
+    queryFn: async () => {
+      try {
+        const v = unwrap(await (await nimiqProvider()).getBalance(nimiqAddress!))
+        if (typeof v === 'number') return v
+      } catch { /* fall back below */ }
+      const r = await fetch(`${config.relayerUrl}/nimiq/balance/${encodeURIComponent(nimiqAddress!)}`)
+      if (!r.ok) throw new Error('NIM balance unavailable')
+      return ((await r.json()) as { luna: number }).luna
+    },
     enabled: Boolean(nimiqAddress), refetchInterval: 30_000, retry: 1,
   })
   const stake = useQuery({

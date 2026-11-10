@@ -41,6 +41,12 @@ export class NimiqRpc {
     return j.result!.data
   }
 
+  /** Spendable balance in Luna (getAccountByAddress); a never-used address has 0. */
+  async balance(address: string): Promise<number> {
+    const a = await this.call<{ balance: number }>('getAccountByAddress', [address])
+    return a.balance ?? 0
+  }
+
   /** Active stake in Luna; 0 if the address is not (or no longer) a staker. */
   async activeStake(address: string): Promise<{ active: number, found: boolean }> {
     try {

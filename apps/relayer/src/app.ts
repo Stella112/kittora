@@ -44,6 +44,17 @@ export function build(cfg: Config = loadConfig()) {
     }
   })
 
+  /** NIM balance in Luna on the configured Nimiq network (fallback when Nimiq Pay's own client is still syncing). */
+  app.get('/nimiq/balance/:address', async (c) => {
+    const address = decodeURIComponent(c.req.param('address'))
+    if (!/^NQ\d{2}( ?[0-9A-Z]{4}){8}$/.test(address.trim())) return c.json({ error: 'bad_params', message: 'bad Nimiq address' }, 400)
+    try {
+      return c.json({ luna: await nimiq.balance(address.trim()) })
+    } catch {
+      return c.json({ error: 'rpc_down', message: 'Nimiq network not reachable, please retry' }, 503)
+    }
+  })
+
   /** Active NIM stake for an address on the configured Nimiq network (used before locking a bond). */
   app.get('/nimiq/staker/:address', async (c) => {
     try {
