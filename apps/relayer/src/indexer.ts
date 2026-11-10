@@ -300,6 +300,24 @@ export class Indexer {
     }
   }
 
+  /** Members tab: meetings each member bought shares in, over the whole history (not a feed page), and when they joined. */
+  async memberStats(groupId: bigint) {
+    await this.fresh()
+    const rows = this.groupFeeds.get(String(groupId)) ?? []
+    const paid = new Map<string, Set<number>>()
+    const joins = new Map<string, FeedItem>()
+    for (const r of rows) {
+      const m = String(r.args.member ?? '').toLowerCase()
+      if (r.event === 'SharesBought') { const s = paid.get(m) ?? new Set<number>(); s.add(Number(r.args.meeting)); paid.set(m, s) }
+      if (r.event === 'MemberJoined') { const prev = joins.get(m); if (!prev || prev.block < r.block) joins.set(m, r) } // latest join (after a removal)
+    }
+    const timed = await this.withTimes([...joins.values()])
+    const out: Record<string, { paid: number[], joinedTs: number | null }> = {}
+    for (const j of timed) out[String(j.args.member).toLowerCase()] = { paid: [], joinedTs: j.ts ?? null }
+    for (const [m, s] of paid) out[m] = { paid: [...s].sort((a, b) => a - b), joinedTs: out[m]?.joinedTs ?? null }
+    return out
+  }
+
   /** A1.2: the group's feed, newest first, with block times. Rebuilt from chain logs on every relayer start. */
   async groupFeed(groupId: bigint, limit = 200) {
     await this.fresh()

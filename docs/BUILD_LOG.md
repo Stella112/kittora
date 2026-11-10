@@ -259,3 +259,9 @@ Checked first (Addendum §5): the first deployment held **0 groups, 0 pockets, 0
 - keepflow.site still 200.
 
 **Next:** phone gates inside Nimiq Pay (A1.1–A1.5 + stamps + Gate 4/5 flows); top up the relayer wallet to ~5 POL before the pilot.
+
+## Nov 10 2026: closing two known gaps
+- **Members tab counts the whole history.** The relayer's `/group/:id` now returns `memberStats` (meetings each member bought shares in, from every indexed event, plus their latest join time); the Members tab uses it instead of the 200-event feed page. Test: 250 purchases counted while the feed page stays at 200.
+- **Autosave runs can be stamped.** New stamp code `ar` (`mandate.run`). Autosave purchases happen while the member is away, so the group page now offers "Stamp your Autosave runs" for the member's unstamped runs (1 Luna to themselves each, one Nimiq Pay approval each, optional). The relayer verifies them like any stamp (the run's tx carries PocketVault + GroupKitty logs). No Kittora Nimiq key was added.
+- Evidence: relayer 39/39 (fork suite incl. the A1 group cycle; stamps round-trip all 18 codes), web 39/39, both typecheck.
+- Open: the stamp button needs the phone check (the devnet stand-in has no Nimiq side).

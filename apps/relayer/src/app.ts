@@ -97,12 +97,13 @@ export function build(cfg: Config = loadConfig()) {
     if (!/^\d{1,12}$/.test(id)) return badParams(c, 'bad group id')
     return indexed(async () => {
       const since = Math.floor(Date.now() / 1000) - RECENT
-      const [ix, relays, windows] = await Promise.all([
+      const [ix, memberStats, relays, windows] = await Promise.all([
         indexer.groupIndex(BigInt(id)),
+        indexer.memberStats(BigInt(id)),
         db.select().from(relayStatus).where(and(eq(relayStatus.groupId, Number(id)), gt(relayStatus.createdAt, since))).all(),
         db.select().from(mandateWindows).where(and(eq(mandateWindows.groupId, Number(id)), gt(mandateWindows.updatedAt, since))).all(),
       ])
-      return { ...ix, relays: relays.filter(r => r.status !== 'confirmed'), autosaveWindows: windows }
+      return { ...ix, memberStats, relays: relays.filter(r => r.status !== 'confirmed'), autosaveWindows: windows }
     })(c)
   })
 

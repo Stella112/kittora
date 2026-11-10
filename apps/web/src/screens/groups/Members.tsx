@@ -14,39 +14,24 @@ export function RolePill({ role }: { role: Role }) {
 
 export interface MemberStats { paid: number, missed: number, joinedAt: number }
 
-/** Paid / missed meetings per member from on-chain purchases (SharesBought carries the meeting index). */
-export function memberStats(g: Pick<GroupDetail, 'startAt' | 'p' | 'meeting' | 'members'>, feed: GroupFeedRow[]): Record<string, MemberStats> {
-  const paid = new Map<string, Set<number>>()
-  const joined = new Map<string, number>()
-  for (const i of feed) {
-    const m = String(i.args.member ?? '').toLowerCase()
-    if (i.event === 'SharesBought') {
-      const set = paid.get(m) ?? new Set<number>()
-      set.add(Number(i.args.meeting))
-      paid.set(m, set)
-    }
-    if ((i.event === 'MemberJoined' || i.event === 'GroupCreated') && i.ts) {
-      const who = i.event === 'GroupCreated' ? String(i.actor ?? '') : m
-      const idx = Number((BigInt(i.ts) - g.startAt) / g.p.meetingInterval)
-      const prev = joined.get(who)
-      joined.set(who, prev === undefined ? Math.max(idx, 0) : Math.min(prev, Math.max(idx, 0)))
-    }
-  }
+/** Paid / missed meetings per member from the relayer's whole-history stats (not a feed page). */
+export function memberStats(g: Pick<GroupDetail, 'startAt' | 'p' | 'meeting' | 'members' | 'memberStats'>): Record<string, MemberStats> {
   const out: Record<string, MemberStats> = {}
   const current = Number(g.meeting)
   for (const mem of g.members) {
     const k = mem.address.toLowerCase()
-    const set = paid.get(k) ?? new Set<number>()
-    const from = joined.get(k) ?? 0
+    const st = g.memberStats[k]
+    const paid = new Set(st?.paid ?? [])
+    const from = st?.joinedTs ? Math.max(0, Number((BigInt(st.joinedTs) - g.startAt) / g.p.meetingInterval)) : 0
     let missed = 0
-    for (let w = from; w < current; w++) if (!set.has(w)) missed++ // the current meeting is still open
-    out[k] = { paid: set.size, missed, joinedAt: from }
+    for (let w = from; w < current; w++) if (!paid.has(w)) missed++ // the current meeting is still open
+    out[k] = { paid: paid.size, missed, joinedAt: from }
   }
   return out
 }
 
 export function MembersTab({ g, evm, feed }: { g: GroupDetail, evm: Address, feed: GroupFeedRow[] }) {
-  const stats = memberStats(g, feed)
+  const stats = memberStats(g)
   const onAutosave = new Set(g.mandates.filter(m => m.active).map(m => m.owner.toLowerCase()))
   const misses = new Map<string, string>()
   for (const w of g.autosaveWindows) if (w.status === 'failed' && w.windowIdx >= Number(g.meeting) - 1) misses.set(w.member.toLowerCase(), w.reason ?? 'Autosave run failed')

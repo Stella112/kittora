@@ -108,6 +108,7 @@ export interface GroupDetail {
   autosaveWindows: AutosaveWindow[]
   /** Who approved each loan / payment (from the relayer index of approval events). */
   approvers: { loans: Record<string, string[]>, payouts: Record<string, string[]> }
+  memberStats: Record<string, { paid: number[], joinedTs: number | null }>
 }
 
 export const payoutExpired = (po: PayoutView, g: Pick<GroupDetail, 'now'>) => !po.executed && g.now > po.expiresAt

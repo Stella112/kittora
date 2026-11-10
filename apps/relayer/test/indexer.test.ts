@@ -60,3 +60,29 @@ describe('indexer log ranges', () => {
     await expect(new Indexer(pub, VAULT, GROUP, 1n).of(OWNER)).rejects.toThrow('ECONNRESET')
   })
 })
+
+describe('member stats use the whole history, not a feed page', () => {
+  it('counts 250 paid meetings for one member', async () => {
+    const { encodeAbiParameters, encodeEventTopics } = await import('viem')
+    const { GroupKittyAbi } = await import('@kittora/core')
+    const mk = (eventName: string, args: Record<string, unknown>, data: `0x${string}`, block: bigint, i: number) => ({
+      address: GROUP.toLowerCase(), topics: encodeEventTopics({ abi: GroupKittyAbi as any, eventName, args } as any), data,
+      blockNumber: block, transactionHash: `0x${i.toString(16).padStart(64, '0')}`, logIndex: 0, blockHash: `0x${'bb'.repeat(32)}`, transactionIndex: 0, removed: false,
+    })
+    const logs = [mk('MemberJoined', { groupId: 1n, member: OWNER }, '0x', 10n, 1)]
+    for (let m = 0; m < 250; m++) {
+      logs.push(mk('SharesBought', { groupId: 1n, member: OWNER },
+        encodeAbiParameters([{ type: 'uint256' }, { type: 'uint256' }, { type: 'uint256' }, { type: 'address' }], [BigInt(m), 1n, 0n, OWNER]), 20n + BigInt(m), 2 + m))
+    }
+    const pub = {
+      getBlockNumber: async () => 300n,
+      getBlock: async () => ({ timestamp: 1_793_000_000n }),
+      getLogs: async ({ address }: { address: Address }) => (address === GROUP ? logs : []),
+    } as unknown as PublicClient
+    const ix = new Indexer(pub, VAULT, GROUP, 1n)
+    const s = await ix.memberStats(1n)
+    expect(s[OWNER.toLowerCase()].paid).toHaveLength(250)
+    expect(s[OWNER.toLowerCase()].joinedTs).toBe(1_793_000_000)
+    expect((await ix.groupFeed(1n)).items).toHaveLength(200) // the feed page stays capped; stats do not
+  })
+})

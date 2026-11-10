@@ -24,6 +24,8 @@ export const STAMP_CODES: Record<string, string> = {
   'group.setTreasurer': 'rl',
   'group.transferAdmin': 'ad',
   'group.removeMember': 'rm',
+  // Autosave run into a group: sent by the relayer, stamped later by the member from the app
+  'mandate.run': 'ar',
 }
 const CODES = new Set(Object.values(STAMP_CODES))
 

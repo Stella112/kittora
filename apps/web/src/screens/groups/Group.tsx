@@ -24,6 +24,7 @@ import { MembersTab, RolePill } from './Members.tsx'
 import { GroupFeedView } from './GroupFeedView.tsx'
 import { Pinned } from './Pinned.tsx'
 import { AdminPanel } from './AdminPanel.tsx'
+import { AutosaveStamps } from './AutosaveStamps.tsx'
 
 export type Flow = { summary: Summary, steps: TxStep[] } | null
 export type Start = (f: Flow) => void
@@ -75,6 +76,7 @@ function GroupBody({ evm }: { evm: Address }) {
       {back}
       <Header g={g} evm={evm} />
       <MissedNotice g={g} evm={evm} />
+      <AutosaveStamps feed={feed} evm={evm} groupId={g.id} />
       <Pinned g={g} evm={evm} start={start} startNoMoney={setFlow} />
       <nav className="grid gap-1 rounded-2xl bg-brand-soft p-1" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }} aria-label="Group sections">
         {tabs.map(([t, label]) => (

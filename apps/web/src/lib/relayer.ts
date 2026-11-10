@@ -21,6 +21,8 @@ export interface GroupIndex {
   loanIds: string[]
   payoutIds: string[]
   mandateIds: string[]
+  /** Meetings each member bought shares in (whole history) and when they (last) joined. */
+  memberStats: Record<string, { paid: number[], joinedTs: number | null }>
   approvers: { loans: Record<string, string[]>, payouts: Record<string, string[]> }
   relays: { hash: string, action: string, signer: string, groupId: number | null, refId: number | null, status: 'submitted' | 'failed', createdAt: number }[]
   autosaveWindows: { key: string, mandateId: number, groupId: number, member: string, windowIdx: number, status: 'sent' | 'skipped' | 'failed', reason: string | null, txHash: string | null, updatedAt: number }[]

@@ -106,6 +106,7 @@ export async function loadGroup(id: bigint, me: Address | null): Promise<GroupDe
     relays: index.relays,
     autosaveWindows: index.autosaveWindows,
     approvers: index.approvers,
+    memberStats: index.memberStats ?? {},
   }
 }
 
