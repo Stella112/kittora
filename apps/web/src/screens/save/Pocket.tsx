@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Address } from 'viem'
@@ -24,7 +24,9 @@ function PocketBody({ evm }: { evm: Address }) {
   const q = usePortfolio(evm)
   const qc = useQueryClient()
   const [flow, setFlow] = useState<Flow>(null)
-  const done = async () => { setFlow(null); await qc.invalidateQueries({ queryKey: ['portfolio'] }) }
+  const loaded = Boolean(q.data)
+  useEffect(() => { if (loaded && window.location.hash === '#withdraw') setTimeout(() => document.getElementById('withdraw')?.scrollIntoView({ behavior: 'smooth' }), 150) }, [loaded])
+  const done = async () => { setFlow(null); await Promise.all([qc.invalidateQueries({ queryKey: ['portfolio'] }), qc.invalidateQueries({ queryKey: ['walletUsdt'] })]) }
 
   if (q.isLoading) return <Spinner label="Loading pocket…" />
   if (q.error) return <ErrorPanel error={classify(q.error)} onRetry={() => q.refetch()} />
@@ -110,7 +112,7 @@ function WithdrawCard({ evm, p, start }: { evm: Address, p: PocketView, start: (
     })
   }
   return (
-    <Card className="space-y-3">
+    <section id="withdraw" className="scroll-mt-4"><Card className="space-y-3">
       <h2 className="font-bold">Withdraw</h2>
       {locked
         ? <ErrorPanel error={makeError('blocked', undefined, `This SafeLock is locked by the contract until ${new Date(Number(p.unlockAt) * 1000).toLocaleString()}. There is no early exit.`)} />
@@ -124,7 +126,7 @@ function WithdrawCard({ evm, p, start }: { evm: Address, p: PocketView, start: (
             </div>
           </>
         )}
-    </Card>
+    </Card></section>
   )
 }
 

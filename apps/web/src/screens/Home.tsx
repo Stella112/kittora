@@ -6,6 +6,7 @@ import { contractsDeployed } from '../config.ts'
 import { classify, makeError } from '../lib/errors.ts'
 import { Button, Card, ErrorPanel, Spinner, usdt } from '../components/ui.tsx'
 import { SavingsHero } from '../components/SavingsHero.tsx'
+import { WalletBalance } from '../components/WalletBalance.tsx'
 import { disclosureAccepted } from './Disclosure.tsx'
 
 export function useNow(ms = 1000) {
@@ -41,6 +42,7 @@ export function Home() {
       </div>
 
       <SavingsHero evm={evmAddress} p={q.data} total={total} />
+      <WalletBalance evm={evmAddress} />
       <div className="grid grid-cols-2 gap-2">
         <div className="rounded-[22px] bg-surface p-3 ring-1 ring-line">
           <p className="text-xs font-bold text-muted">My Kitty</p>

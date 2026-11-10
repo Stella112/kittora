@@ -2,7 +2,9 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { projectWeekly } from '../../lib/savingsMath.ts'
-import { Card } from '../../components/ui.tsx'
+import { Card, usdt } from '../../components/ui.tsx'
+import type { PocketView } from '../../lib/portfolio.ts'
+import { pocketName } from './Save.tsx'
 
 const OPTIONS = [
   { to: '/save/new/flex', title: 'Flex', sub: 'Save and take out any time', tag: 'Most flexible', dot: 'bg-mint text-brand-strong', icon: 'M12 5v14M5 12h14' },
@@ -71,5 +73,45 @@ export function ProjectionCard({ apr }: { apr: number | null }) {
       </div>
       <p className="text-xs text-muted">Simulated at today's {(rate * 100).toFixed(2)}% variable Aave rate, compounding weekly. The rate changes all the time; this is not a promise.</p>
     </Card>
+  )
+}
+
+/** "Withdraw" bottom sheet: pick the pocket to take money out of. */
+export function WithdrawSheet({ open, onClose, pockets }: { open: boolean, onClose: () => void, pockets: PocketView[] }) {
+  useEffect(() => {
+    if (!open) return
+    const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    window.addEventListener('keydown', k)
+    return () => window.removeEventListener('keydown', k)
+  }, [open, onClose])
+  if (!open) return null
+  const now = BigInt(Math.floor(Date.now() / 1000))
+  const withMoney = pockets.filter(p => p.assets > 0n)
+  return (
+    <div className="fixed inset-0 z-40 flex items-end justify-center" role="dialog" aria-modal="true" aria-label="Withdraw">
+      <button type="button" aria-label="Close" className="absolute inset-0 bg-[#0b1512]/45" onClick={onClose} />
+      <div className="relative w-full max-w-[480px] rounded-t-[32px] bg-surface px-4 pb-[max(env(safe-area-inset-bottom),20px)] pt-3 shadow-2xl">
+        <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-line" aria-hidden />
+        <h2 className="text-xl font-black">Withdraw from</h2>
+        <p className="text-sm text-muted">Money goes back to your Nimiq Pay wallet on Polygon.</p>
+        {withMoney.length === 0 && <p className="mt-4 rounded-[22px] bg-canvas p-4 text-sm text-muted">No pocket has money in it yet.</p>}
+        <ul className="mt-3 space-y-2">
+          {withMoney.map(p => {
+            const locked = p.kind === 2 && p.unlockAt > now
+            return (
+              <li key={String(p.id)}>
+                <Link to={`/save/pocket/${p.id}#withdraw`} onClick={onClose} className="flex items-center justify-between gap-3 rounded-[22px] p-3 ring-1 ring-line transition active:scale-[0.99]">
+                  <span className="min-w-0">
+                    <span className="block font-extrabold text-ink">{pocketName(p.id, p.kind)}</span>
+                    <span className="block text-sm text-muted">{locked ? `Locked until ${new Date(Number(p.unlockAt) * 1000).toLocaleDateString()}` : 'Available now'}</span>
+                  </span>
+                  <span className="tabular shrink-0 font-black">{usdt(p.assets)} <span className="text-xs font-bold text-muted">USDT</span></span>
+                </Link>
+              </li>
+            )
+          })}
+        </ul>
+      </div>
+    </div>
   )
 }
