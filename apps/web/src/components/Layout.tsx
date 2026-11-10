@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router'
 import { TestnetBadge } from './ui.tsx'
 import { Wordmark } from './Logo.tsx'
+import { ThemeToggle } from './ThemeToggle.tsx'
 
 const tabs = [
   { to: '/', label: 'Home', icon: 'M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z' },
@@ -14,7 +15,7 @@ export function Layout() {
     <div className="mx-auto flex min-h-dvh max-w-[480px] flex-col">
       <header className="flex items-center justify-between px-4 pt-[max(env(safe-area-inset-top),14px)] pb-3">
         <Wordmark />
-        <TestnetBadge />
+        <div className="flex items-center gap-2"><TestnetBadge /><ThemeToggle /></div>
       </header>
       <main className="flex-1 px-4 pb-32">
         <Outlet />

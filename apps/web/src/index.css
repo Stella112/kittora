@@ -25,7 +25,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --color-brand: #3fbf93;
     --color-brand-strong: #7ad8b6;
     --color-brand-soft: #123329;
@@ -46,6 +46,28 @@
     --color-bad: #f2828b;
     --color-bad-soft: #3b1518;
   }
+}
+
+:root[data-theme="dark"] {
+  --color-brand: #3fbf93;
+  --color-brand-strong: #7ad8b6;
+  --color-brand-soft: #123329;
+  --color-gold: #f5c25a;
+  --color-gold-soft: #3a2e12;
+  --color-pink: #f2a7c3;
+  --color-pink-soft: #3a1f2a;
+  --color-mint: #2f6f5c;
+  --color-ink: #eef6f2;
+  --color-muted: #9fb3ab;
+  --color-surface: #13201b;
+  --color-canvas: #0b1512;
+  --color-line: #22332c;
+  --color-good: #4fd19f;
+  --color-good-soft: #12301f;
+  --color-warn: #f5c25a;
+  --color-warn-soft: #3a2e12;
+  --color-bad: #f2828b;
+  --color-bad-soft: #3b1518;
 }
 
 html, body, #root { min-height: 100%; }
@@ -83,3 +105,7 @@ h1, h2, h3, .display { letter-spacing: -0.01em; }
 body { font-weight: 500; }
 
 h1 { font-weight: 900; color: var(--color-ink); }
+
+:root { color-scheme: light dark; }
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }

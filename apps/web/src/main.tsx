@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client'
 import { createBrowserRouter, RouterProvider } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import './index.css'
+import { applyTheme, readTheme } from './components/ThemeToggle.tsx'
+applyTheme(readTheme()) // before the first paint, so there is no flash of the wrong theme
 import { SessionProvider, useSession } from './state/session.tsx'
 import { Layout } from './components/Layout.tsx'
 import { Spinner } from './components/ui.tsx'
