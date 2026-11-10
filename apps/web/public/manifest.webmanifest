@@ -4,8 +4,8 @@
   "description": "Save in dollars and run your savings group from Nimiq Pay.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#fff8f1",
-  "theme_color": "#F28C28",
+  "background_color": "#fbf6ec",
+  "theme_color": "#0E6B52",
   "icons": [
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }

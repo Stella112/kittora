@@ -7,7 +7,7 @@ import { parseUsdt } from '../../lib/amounts.ts'
 import { allowanceOf, deadline, signAndRelayVault, usdtBalance, VAULT, vaultNonce } from '../../lib/chainActions.ts'
 import { approveStep, setAllowanceStep } from '../../lib/steps.ts'
 import { classify, makeError } from '../../lib/errors.ts'
-import { Button, Card, ErrorPanel, Spinner, usdt } from '../../components/ui.tsx'
+import { Button, Card, ErrorPanel, Hero, Spinner, usdt } from '../../components/ui.tsx'
 import { RequireEvm } from '../../components/RequireEvm.tsx'
 import { TxFlow, type Summary, type TxStep } from '../../components/TxFlow.tsx'
 import { Field } from './NewPocket.tsx'
@@ -49,7 +49,7 @@ function Header({ p }: { p: PocketView }) {
   const now = BigInt(Math.floor(Date.now() / 1000))
   const pct = p.kind === 1 && p.target > 0n ? Number((p.assets * 100n) / p.target) : null
   return (
-    <Card className="bg-gradient-to-br from-brand to-brand-strong text-white">
+    <Hero>
       <p className="text-sm opacity-90">{pocketName(p.id, p.kind)}</p>
       <p className="tabular mt-1 text-4xl font-extrabold">{usdt(p.assets)} <span className="text-lg">USDT</span></p>
       {pct !== null && (
@@ -59,7 +59,7 @@ function Header({ p }: { p: PocketView }) {
         </div>
       )}
       {p.kind === 2 && <p className="mt-2 text-sm opacity-90">{p.unlockAt > now ? `Locked until ${new Date(Number(p.unlockAt) * 1000).toLocaleString()}` : 'Unlocked: you can withdraw'}</p>}
-    </Card>
+    </Hero>
   )
 }
 
