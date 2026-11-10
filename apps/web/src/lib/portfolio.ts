@@ -29,8 +29,45 @@ export interface Portfolio {
   vaultTotal: bigint, principal: bigint, earned: bigint, loadedAt: number
 }
 
+/** Max items per kind scanned on-chain (newest first). Far above pilot volumes; beyond it the relayer index fills in. */
+const SCAN_CAP = 400n
+
+/**
+ * Which pockets / bonds / mandates / groups belong to `evm`, read straight from the contracts (counters + owner
+ * fields). Balances never depend on the relayer's index: after a relayer restart its index rebuilds slowly on
+ * free RPCs, and Home must still show the right money.
+ */
+async function chainIds(evm: Address) {
+  const r = reader()
+  const vault = config.vault!
+  const gk = config.groupKitty!
+  const me = evm.toLowerCase()
+  const read = <T>(address: Address, abi: Abi, functionName: string, args: unknown[] = []) => r.readContract({ address, abi, functionName, args }) as Promise<T>
+  const range = (n: bigint) => { const out: bigint[] = []; for (let i = n; i >= 1n && n - i < SCAN_CAP; i--) out.push(i); return out }
+  const [pc, bc, mc, gc] = await Promise.all([
+    read<bigint>(vault, vaultAbi, 'pocketCount'), read<bigint>(vault, vaultAbi, 'bondCount'),
+    read<bigint>(vault, vaultAbi, 'mandateCount'), read<bigint>(gk, gkAbi, 'groupCount'),
+  ])
+  const [pockets, bonds, mandates, groups] = await Promise.all([
+    Promise.all(range(pc).map(async id => ((await read<readonly [Address]>(vault, vaultAbi, 'pockets', [id]))[0].toLowerCase() === me ? id : null))),
+    Promise.all(range(bc).map(async id => ((await read<readonly [bigint, Address]>(vault, vaultAbi, 'bonds', [id]))[1].toLowerCase() === me ? id : null))),
+    Promise.all(range(mc).map(async id => ((await read<readonly [Address]>(vault, vaultAbi, 'mandates', [id]))[0].toLowerCase() === me ? id : null))),
+    Promise.all(range(gc).map(async id => ((await read<boolean>(gk, gkAbi, 'isMember', [id, evm])) ? id : null))),
+  ])
+  const keep = (xs: (bigint | null)[]) => xs.filter((x): x is bigint => x !== null).map(String)
+  return { pocketIds: keep(pockets), bondIds: keep(bonds), mandateIds: keep(mandates), groupIds: keep(groups) }
+}
+
+const union = (a: string[], b: string[]) => [...new Set([...a, ...b])].sort((x, y) => Number(BigInt(x) - BigInt(y)))
+
 export async function loadPortfolio(evm: Address): Promise<Portfolio> {
-  const ids = await relayer.me(evm)
+  const [chain, indexed] = await Promise.all([chainIds(evm), relayer.me(evm).catch(() => null)])
+  const ids = {
+    pocketIds: union(chain.pocketIds, indexed?.pocketIds ?? []),
+    bondIds: union(chain.bondIds, indexed?.bondIds ?? []),
+    mandateIds: union(chain.mandateIds, indexed?.mandateIds ?? []),
+    groupIds: union(chain.groupIds, indexed?.groupIds ?? []),
+  }
   const r = reader()
   const vault = config.vault!
   const gk = config.groupKitty!
