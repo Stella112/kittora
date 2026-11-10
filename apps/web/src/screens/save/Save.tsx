@@ -5,7 +5,10 @@ import { aaveSupplyRateRay } from '../../lib/chainActions.ts'
 import { rayToPct, formatNim } from '../../lib/amounts.ts'
 import { classify } from '../../lib/errors.ts'
 import { store } from '../../lib/storage.ts'
-import { Card, ErrorPanel, Spinner, usdt } from '../../components/ui.tsx'
+import { useState } from 'react'
+import { Button, Card, ErrorPanel, Spinner, usdt } from '../../components/ui.tsx'
+import { SavingsHero, useApr } from '../../components/SavingsHero.tsx'
+import { AddMoneySheet, ProjectionCard } from './AddMoney.tsx'
 import { RequireEvm } from '../../components/RequireEvm.tsx'
 import { disclosureAccepted } from '../Disclosure.tsx'
 
@@ -25,8 +28,7 @@ export function Save() {
   if (!disclosureAccepted()) return <Navigate to="/disclosure?next=/save" replace />
   return (
     <div className="space-y-4 pt-2">
-      <h1 className="text-2xl font-bold">My Kitty</h1>
-      <RateBadge />
+      <h1 className="text-2xl">My Kitty</h1>
       <RequireEvm>{evm => <SaveBody evm={evm} />}</RequireEvm>
     </div>
   )
@@ -34,21 +36,14 @@ export function Save() {
 
 function SaveBody({ evm }: { evm: `0x${string}` }) {
   const q = usePortfolio(evm)
+  const apr = useApr()
+  const [sheet, setSheet] = useState(false)
   const now = BigInt(Math.floor(Date.now() / 1000))
   return (
     <>
-      <div className="grid grid-cols-3 gap-2">
-        {([['flex', 'Flex', 'Anytime'], ['target', 'Target', 'A goal'], ['safelock', 'SafeLock', 'Locked']] as const).map(([k, t, d]) => (
-          <Link key={k} to={`/save/new/${k}`} className="flex min-h-20 flex-col items-center justify-center rounded-2xl bg-surface p-2 text-center shadow-sm">
-            <span className="font-bold text-brand-strong">{t}</span>
-            <span className="text-xs text-muted">{d}</span>
-          </Link>
-        ))}
-      </div>
-      <Link to="/save/nim" className="block rounded-2xl bg-brand-soft p-4">
-        <p className="font-bold">NIM SafeLock</p>
-        <p className="text-sm text-muted">Stake NIM in your own wallet and back your promise with a USDT bond.</p>
-      </Link>
+      <SavingsHero evm={evm} p={q.data} title="My Kitty" total={q.data?.myKittyTotal} />
+      <Button onClick={() => setSheet(true)}>Add money</Button>
+      <AddMoneySheet open={sheet} onClose={() => setSheet(false)} />
 
       {q.isLoading && <Spinner label="Loading your pockets…" />}
       {q.error && <ErrorPanel error={classify(q.error)} onRetry={() => q.refetch()} compact />}
@@ -90,6 +85,7 @@ function SaveBody({ evm }: { evm: `0x${string}` }) {
           ))}
         </>
       )}
+      <ProjectionCard apr={apr} />
     </>
   )
 }

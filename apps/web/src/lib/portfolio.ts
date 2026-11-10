@@ -23,7 +23,11 @@ export interface GroupView {
 }
 export interface BondView { id: bigint, pocketId: bigint, nimiqAddress: `0x${string}`, unlockAt: bigint, nimLuna: bigint, groupId: bigint, status: number, assets: bigint }
 export interface MandateView { id: bigint, amountPerRun: bigint, interval: bigint, maxRuns: number, runs: number, expiry: bigint, lastRun: bigint, toGroup: boolean, revoked: boolean, destId: bigint }
-export interface Portfolio { pockets: PocketView[], groups: GroupView[], bonds: BondView[], mandates: MandateView[], myKittyTotal: bigint, groupTotal: bigint, nextEvent: { label: string, at: bigint } | null }
+export interface Portfolio {
+  pockets: PocketView[], groups: GroupView[], bonds: BondView[], mandates: MandateView[], myKittyTotal: bigint, groupTotal: bigint, nextEvent: { label: string, at: bigint } | null
+  /** Everything in the vault (pockets + bonds), what you put in (on-chain principalOf), and the difference: interest earned. */
+  vaultTotal: bigint, principal: bigint, earned: bigint, loadedAt: number
+}
 
 export async function loadPortfolio(evm: Address): Promise<Portfolio> {
   const ids = await relayer.me(evm)
@@ -65,12 +69,15 @@ export async function loadPortfolio(evm: Address): Promise<Portfolio> {
     return { id, amountPerRun: m[1], interval: m[2], maxRuns: m[3], runs: m[4], expiry: m[5], lastRun: m[6], toGroup: m[7], revoked: m[8], destId: m[9] }
   }))
   const myKittyTotal = pockets.filter(p => p.kind !== 3).reduce((a, p) => a + p.assets, 0n)
+  const vaultTotal = pockets.reduce((a, p) => a + p.assets, 0n)
+  const principal = await r.readContract({ address: vault, abi: vaultAbi, functionName: 'principalOf', args: [evm] }) as bigint
+  const earned = vaultTotal > principal ? vaultTotal - principal : 0n
   const groupTotal = groups.reduce((a, g) => a + g.value, 0n)
   const upcoming = groups.flatMap(g => g.shareOutOpen ? [] : [
     { label: 'Next meeting', at: g.nextMeetingAt < g.cycleEnd ? g.nextMeetingAt : g.cycleEnd },
     { label: 'Share-Out', at: g.cycleEnd },
   ]).sort((a, b) => Number(a.at - b.at))
-  return { pockets, groups, bonds, mandates, myKittyTotal, groupTotal, nextEvent: upcoming[0] ?? null }
+  return { pockets, groups, bonds, mandates, myKittyTotal, groupTotal, nextEvent: upcoming[0] ?? null, vaultTotal, principal, earned, loadedAt: Date.now() }
 }
 
 export function usePortfolio(evm: Address | null) {

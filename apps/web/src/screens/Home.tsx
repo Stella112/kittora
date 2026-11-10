@@ -4,7 +4,8 @@ import { useSession } from '../state/session.tsx'
 import { usePortfolio } from '../lib/portfolio.ts'
 import { contractsDeployed } from '../config.ts'
 import { classify, makeError } from '../lib/errors.ts'
-import { Button, Card, ErrorPanel, Hero, Spinner, usdt } from '../components/ui.tsx'
+import { Button, Card, ErrorPanel, Spinner, usdt } from '../components/ui.tsx'
+import { SavingsHero } from '../components/SavingsHero.tsx'
 import { disclosureAccepted } from './Disclosure.tsx'
 
 export function useNow(ms = 1000) {
@@ -39,25 +40,17 @@ export function Home() {
         <p className="mt-1 text-sm text-muted">Your savings and your group, in dollars, inside Nimiq Pay.</p>
       </div>
 
-      <Hero>
-        <p className="text-sm font-bold text-white/80">All your savings</p>
-        <p className="tabular mt-1 text-[40px] font-black leading-none">{usdt(total)} <span className="text-lg font-bold text-white/80">USDT</span></p>
-        <div className="mt-5 grid grid-cols-2 gap-2">
-          <div className="rounded-2xl bg-white/10 p-3 backdrop-blur-sm">
-            <p className="text-xs font-bold text-white/75">My Kitty</p>
-            <p className="tabular text-lg font-extrabold">{q.data ? usdt(q.data.myKittyTotal) : '0.00'}</p>
-          </div>
-          <div className="rounded-2xl bg-white/10 p-3 backdrop-blur-sm">
-            <p className="text-xs font-bold text-white/75">Group share</p>
-            <p className="tabular text-lg font-extrabold">{q.data ? usdt(q.data.groupTotal) : '0.00'}</p>
-          </div>
+      <SavingsHero evm={evmAddress} p={q.data} total={total} />
+      <div className="grid grid-cols-2 gap-2">
+        <div className="rounded-[22px] bg-surface p-3 ring-1 ring-line">
+          <p className="text-xs font-bold text-muted">My Kitty</p>
+          <p className="tabular text-lg font-black">{q.data ? usdt(q.data.myKittyTotal) : '0.00'}</p>
         </div>
-        {q.data?.nextEvent && (
-          <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-[#f2b134] px-3 py-1 text-sm font-extrabold text-[#3b2a06]">
-            {q.data.nextEvent.label} in <span className="tabular">{countdown(q.data.nextEvent.at, now)}</span>
-          </p>
-        )}
-      </Hero>
+        <div className="rounded-[22px] bg-surface p-3 ring-1 ring-line">
+          <p className="text-xs font-bold text-muted">{q.data?.nextEvent ? `${q.data.nextEvent.label} in ${countdown(q.data.nextEvent.at, now)}` : 'Group share'}</p>
+          <p className="tabular text-lg font-black">{q.data ? usdt(q.data.groupTotal) : '0.00'}</p>
+        </div>
+      </div>
 
       {!contractsDeployed() && <ErrorPanel error={makeError('not_deployed')} />}
       {contractsDeployed() && !evmAddress && (
