@@ -1,49 +1,62 @@
-# Vibeathon 02 submission draft
+# Nimiq Mini Apps Competition (Cycle 3): Kittora submission
 
-Submit at app.vibestarter.xyz/vibeathon/submit, signed in with the wallet you applied with.
-Deadline: **Mon 9 Nov 2026, 22:00 UTC**. Entries can be edited until then, so submit early and update.
-Full rules: blog.vibestarter.xyz/vibeathon-02.
+Form: miniappscompetition.com/submissions · Closes **Wed 11 Nov 2026, 23:59 UTC** (aim to submit by ~20:00 UTC).
+Scoring: Functionality 45 · Nimiq Pay integration 25 · Real usage 15 · Design & UX 10 · Promotion 5.
 
-## Required
+## About your app
+- **App name:** Kittora
+- **Category:** pick the finance / savings option in the list (Kittora is savings + savings groups). If the list has
+  "Earning" or "On-chain services", Earning fits best.
+- **Tagline:** save alone, grow together.
+- **Short description:** Kittora lets you save in dollars that earn and run savings groups (esusu / ajo / VSLA) inside
+  Nimiq Pay: shares each meeting, loans with guarantors, a social fund and Share-Out with interest, with no gas fees.
+- **Pricing:** Free (Kittora pays the network fees; no charges to users)
 
-**Project name**
-Kittora
+## Links & demo
+- **Repo URL:** https://github.com/Stella112/kittora
+- **Demo URL:** https://nimpay.app/miniapps/open/kittora.xyz  (or https://kittora.xyz, which shows a QR code on desktop)
+- **Video walkthrough:** `YOUR YouTube/Loom link` (see the shot list below)
 
-**Tagline (one line)**
-Save in dollars and run your savings group from Nimiq Pay: shares, guaranteed loans and Share-Out, gas-free on Polygon.
+## Media (files in `submission/media/`)
+- **App icon / favicon (512×512):** `kittora-icon-512.png`
+- **Thumbnail (240×240):** `kittora-thumbnail-240.png`
+- **Screenshots (3–5), from your phone inside Nimiq Pay.** The first one is the social preview, so make it Home:
+  1. Home: "All your savings" with the Earning pill, live earned counter and wallet balances
+  2. Save: pockets list, plus the Add money sheet open
+  3. Group page: cover header with Admin pill and the pinned "Needs you" card
+  4. Group Activity tab: rows with approvals, statuses and a "Stamped on Nimiq" row
+  5. NIM SafeLock: an active bond (or the review screen)
 
-**Live URL**
-https://kittora.xyz (opens the "Open in Nimiq Pay" screen on desktop; the app runs inside Nimiq Pay)
+## About you
+- **GitHub username:** Stella112
+- **E-mail:** your email
+- **X account:** @kittorasave
+- **Builder story:**
+  > Across Nigeria and much of Africa, people save together in esusu and ajo groups: everyone contributes each
+  > meeting, members can borrow, and the pot is shared at the end. It works because people trust each other, but the
+  > records live in a notebook and the money sits idle in naira that loses value. Kittora puts that circle on-chain
+  > inside Nimiq Pay. Savings are in dollars that earn, every contribution, loan and approval is visible to the whole
+  > group, loans need guarantors and approvals, and at Share-Out everyone gets their savings plus the group's interest.
+  > Members never touch gas: they sign in Nimiq Pay and Kittora pays the fees. NIM holders can keep their NIM staked
+  > and back a savings promise with a bond. "Save alone, grow together."
 
-**What it does and what to try**
-Kittora is a Nimiq Pay mini app for saving in USDT and for savings groups (VSLA / esusu) on Polygon mainnet.
-- *My Kitty*: Flex, Target and SafeLock pockets earning the variable Aave V3 rate, Autosave, and a NIM SafeLock bond.
-- *Group Kitty*: start a group with fixed rules, invite members by link, buy shares each meeting, borrow with
-  guarantors, a social fund for members in need, and Share-Out of savings plus interest at the end of the cycle.
-- Users never hold POL: every action is a signature in Nimiq Pay, and Kittora's relayer pays the gas.
-- Pilot limits are enforced by the contracts: 25 USDT per deposit, 100 USDT per person, 500 USDT per group.
+## Promotion & discovery
+- **Skool post (2 pts):** post in the Mini Apps Skool community and paste the link
+- **Social post (3 pts):** the X launch thread from @kittorasave, then paste the link to post 1
+- **How did you hear:** your answer (e.g. Nimiq Community, X)
 
-What to try (inside Nimiq Pay, with ~2 USDT on Polygon):
-1. Sign in, connect Polygon, open a Flex pocket with 1 USDT, then withdraw it.
-2. Groups → Start a group (hourly pilot), share the invite with a second phone, both buy a share.
-3. Ask for a small loan with the other member as guarantor; they approve; pay it out; repay it.
-4. Activity: every step with its Polygonscan link.
+## Demo video shot list (2–3 min, record on your phone)
+1. Open Kittora from Nimiq Pay. Home: balance, earned counter ticking, wallet USDT and NIM.
+2. Save → Add money → Flex 0.10 USDT: the review screen ("Network fee: covered by Kittora"), then Confirmed.
+3. Group: the cover header, the board with members' shares.
+4. A loan: request → pinned "Needs you" → Approve → Pay out → Repay (share value goes above 1.00).
+5. Social fund payment: propose → Treasurer approves → paid.
+6. Activity tab: initiators, approvals, "Stamped on Nimiq" with the Nimiq link.
+7. End on Share-Out (or the share value showing interest) and the tagline.
 
-Contracts (verified on Polygonscan): PocketVault `0x2583FE752256afB1F863a2D5EEea5241BD2B4bDb`,
-GroupKitty `0x19d8687607fD86A25F8e80a535e5A9c6A848A4a7`.
-
-**AI tools it was built with**
-Claude Code (Claude Opus). `TODO: add any other tools you used.`
-
-## Optional
-- Repo: https://github.com/Stella112/kittora
-- Demo video: `TODO` (the local devnet in BUILD_LOG.md Phase 5 can be used to record a full group cycle)
-- Screenshot: `TODO`
-- Project X handle: `TODO`
-- Fundable score link (fundable.vibestarter.xyz, shown to judges for information, not scored): `TODO`
-
-## Before submitting
-- [x] Live URL loads (https://kittora.xyz, Nov 6)
-- [ ] Phone smoke test in Nimiq Pay (docs/DEPLOY.md, step 6) passes
-- [x] Relayer `/health` is `ok:true` (1.96 POL, Nov 6)
-- [ ] Theme "Night shift": decide whether and how to mention it (not written here)
+## Live facts (for any field that asks)
+- Polygon mainnet contracts, verified: PocketVault `0x2583FE752256afB1F863a2D5EEea5241BD2B4bDb`, GroupKitty
+  `0x19d8687607fD86A25F8e80a535e5A9c6A848A4a7`
+- Nimiq integration: Nimiq sign-in, signing in Nimiq Pay, NIM staking (Garuda Pool) for NIM SafeLock, Nimiq stamps,
+  NIM balance, open-in-Nimiq-Pay deeplinks
+- Pilot limits enforced by the contracts: 25 USDT per deposit, 100 USDT per person, 500 USDT per group
