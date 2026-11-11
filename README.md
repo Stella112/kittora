@@ -1,4 +1,19 @@
-# Kittora
+<p align="center"><img src="submission/media/kittora-icon-512.png" width="96" alt="Kittora logo"></p>
+<h1 align="center">Kittora</h1>
+<p align="center"><b>save alone, grow together.</b><br>USDT savings that earn and on-chain savings groups (esusu / ajo / VSLA), inside Nimiq Pay.</p>
+<p align="center"><a href="https://kittora.xyz">kittora.xyz</a> · Polygon mainnet · zero gas for members · <a href="https://x.com/kittorasave">@kittorasave</a></p>
+
+<p align="center">
+  <img src="docs/screens/home.jpg" width="190" alt="Home">
+  <img src="docs/screens/save.jpg" width="190" alt="Save">
+  <img src="docs/screens/group-admin.jpg" width="190" alt="Group">
+  <img src="docs/screens/group-activity.jpg" width="190" alt="Group activity">
+</p>
+
+## Why
+Across Nigeria and much of Africa, people save together in esusu and ajo groups. It works on trust, but the records
+live in a notebook, the money sits idle in naira, and loans depend on memory. Kittora puts the circle on-chain: savings
+in dollars that earn, every contribution, loan and approval visible to the whole group, and Share-Out paid by the contract.
 
 **Save in dollars and run your savings group from Nimiq Pay.** Kittora is a Nimiq Pay mini app for USDT savings
 pockets and for savings groups (VSLA / esusu / ajo) on Polygon mainnet. Members never need POL: every action is a
