@@ -265,3 +265,9 @@ Checked first (Addendum §5): the first deployment held **0 groups, 0 pockets, 0
 - **Autosave runs can be stamped.** New stamp code `ar` (`mandate.run`). Autosave purchases happen while the member is away, so the group page now offers "Stamp your Autosave runs" for the member's unstamped runs (1 Luna to themselves each, one Nimiq Pay approval each, optional). The relayer verifies them like any stamp (the run's tx carries PocketVault + GroupKitty logs). No Kittora Nimiq key was added.
 - Evidence: relayer 39/39 (fork suite incl. the A1 group cycle; stamps round-trip all 18 codes), web 39/39, both typecheck.
 - Open: the stamp button needs the phone check (the devnet stand-in has no Nimiq side).
+
+## Nov 11 2026: phone test inside Nimiq Pay, passed (reported by Maris)
+Live at https://kittora.xyz (eb614cf) on Polygon mainnet, tested by Maris on her phone inside Nimiq Pay: "all tested and working".
+- Seen on mainnet during the test: pockets #1 Flex (deposited, then withdrawn), #2 NIM SafeLock bond 0.20 USDT, #3 Target 0.10, #4 SafeLock 0.10, #5 Flex 1.00, all owned by the tester's Polygon account (read from PocketVault 0x2583…4bDb).
+- Fixed during the test (all deployed): wallet USDT + NIM balances on Home/Save; Withdraw button and sheet; tappable pocket cards; NIM balance falls back to the relayer's Nimiq RPC while Nimiq Pay is still syncing; Auto / Light / Dark theme switch; Home and Save read pockets, bonds, Autosaves and groups straight from the contracts so balances never depend on the relayer index (which rebuilds after a restart).
+- Test matrix details (device, OS, Nimiq Pay version, per-flow results) to be filled in by Maris.
